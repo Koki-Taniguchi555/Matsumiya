@@ -1,22 +1,26 @@
 "use client";
-import { FormEvent, useState } from "react";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+type Container = { id: string; serial_number: string; management_number?: string | null; barcode?: string | null; container_type: string; container_form: string; status: string; condition: string; capacity_value?: number | null; capacity_unit?: string | null; pressure_test_due_month?: string | null; branches?: { name: string } | null; customers?: { name: string } | null; container_owners?: { name: string } | null; gas_types?: { name: string } | null; };
+const statusLabel: Record<string, string> = { in_stock: "在庫", on_loan: "顧客貸出中", recovered: "回収済" };
+const conditionLabel: Record<string, string> = { normal: "正常", stopped: "停滞", lost: "紛失", damaged: "破損", disposed: "廃棄" };
 
 export default function Home() {
-  const [notice, setNotice] = useState("");
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setNotice("登録中です…");
-    const data = Object.fromEntries(new FormData(event.currentTarget));
-    const response = await fetch("/api/lifecycle", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
-    setNotice(response.ok ? "登録しました。監査履歴にも記録されています。" : `登録できませんでした: ${(await response.json()).error}`);
-  }
-  async function calculateCharge(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setNotice("使用料を計算中です…");
-    const data = Object.fromEntries(new FormData(event.currentTarget));
-    const response = await fetch("/api/usage-charges", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
-    const result = await response.json();
-    setNotice(response.ok ? `計算を確定しました: ${result.charge.amount_yen.toLocaleString()}円（対象 ${result.charge.billable_days}日）` : `計算できませんでした: ${result.error}`);
-  }
-  return <main><h1>容器管理</h1><p className="muted">入荷・納品・回収と使用料計算を一元管理します。</p>
-    <div className="grid"><section><h2>容器の移動を登録</h2><form onSubmit={submit}><label>容器ID<input name="containerId" required placeholder="UUID" /></label><label>処理<select name="action"><option value="received">入荷</option><option value="delivered">納品</option><option value="recovered">回収</option></select></label><label>処理日<input name="occurredOn" type="date" required /></label><label>顧客ID（納品・回収）<input name="customerId" placeholder="UUID" /></label><label>営業所ID（入荷）<input name="branchId" placeholder="UUID" /></label><button>登録する</button></form></section>
-    <section><h2>使用料計算</h2><p className="muted">93日間無料。94日目以降は31日あたり600円を日割りし、月次で切り捨てます。回収日を含めて計算します。</p><form onSubmit={calculateCharge}><label>貸出ID<input name="loanId" required placeholder="UUID" /></label><label>対象月<input name="billingMonth" type="month" required /></label><button>月次使用料を確定</button></form><p className="muted">同じ貸出・対象月の計算済みデータは再実行できません。</p></section></div><p id="notice" role="status">{notice}</p></main>;
+  const [tab, setTab] = useState("ledger"); const [containers, setContainers] = useState<Container[]>([]); const [loading, setLoading] = useState(true); const [notice, setNotice] = useState(""); const [query, setQuery] = useState("");
+  async function loadLedger() { setLoading(true); const response = await fetch("/api/ledger"); const result = await response.json(); if (response.ok) setContainers(result.containers ?? []); else setNotice(result.error ?? "台帳を読み込めませんでした。"); setLoading(false); }
+  useEffect(() => { void loadLedger(); }, []);
+  const filtered = useMemo(() => containers.filter((c) => [c.serial_number, c.management_number, c.barcode, c.gas_types?.name, c.branches?.name, c.customers?.name, c.container_owners?.name].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase())), [containers, query]);
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setNotice("移動を登録中です…"); const data = Object.fromEntries(new FormData(event.currentTarget)); const response = await fetch("/api/lifecycle", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }); const result = await response.json(); setNotice(response.ok ? "登録しました。監査履歴にも記録されています。" : `登録できませんでした: ${result.error}`); if (response.ok) { event.currentTarget.reset(); await loadLedger(); } }
+  async function calculateCharge(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setNotice("使用料を計算中です…"); const data = Object.fromEntries(new FormData(event.currentTarget)); const response = await fetch("/api/usage-charges", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }); const result = await response.json(); setNotice(response.ok ? `計算を確定しました: ${result.charge.amount_yen.toLocaleString()}円（対象 ${result.charge.billable_days}日）` : `計算できませんでした: ${result.error}`); }
+  return <main>
+    <header className="topbar"><div><p className="eyebrow">MATSUMIYA KOUZAI</p><h1>容器管理</h1><p className="muted">瓶号を起点に、所在・検査・使用料までを一元管理します。</p></div><div className="summary"><b>{containers.length}</b><span>表示中の容器</span></div></header>
+    <nav className="tabs" aria-label="主要機能">{[["ledger", "容器台帳"], ["operation", "日常業務"], ["inspection", "検査・保全"], ["billing", "使用料・月次"], ["masters", "マスタ・連携"]].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className={tab === id ? "active" : ""}>{label}</button>)}</nav>
+    {tab === "ledger" && <section className="panel"><div className="panelHead"><div><h2>容器台帳・照会</h2><p>瓶号、バーコード、ガス種、営業所、顧客、保有者で横断検索します。</p></div><button className="secondary" onClick={() => void loadLedger()}>更新</button></div><input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="瓶号・バーコード・ガス種・営業所・顧客で検索" /><div className="tableWrap"><table><thead><tr><th>瓶号</th><th>ガス種 / 容量</th><th>保有者</th><th>所在</th><th>状態</th><th>検査期限</th></tr></thead><tbody>{loading ? <tr><td colSpan={6}>読み込み中…</td></tr> : filtered.length === 0 ? <tr><td colSpan={6}>該当する容器はありません。マスタ登録後に表示されます。</td></tr> : filtered.map((c) => <tr key={c.id}><td><b>{c.serial_number}</b><small>{c.management_number || c.barcode || "登録番号なし"}</small></td><td>{c.gas_types?.name || c.container_type}<small>{c.capacity_value ? `${c.capacity_value}${c.capacity_unit ?? ""}` : c.container_form}</small></td><td>{c.container_owners?.name || "未設定"}</td><td>{c.branches?.name || c.customers?.name || "未設定"}</td><td><span className={`pill ${c.condition}`}>{conditionLabel[c.condition] ?? c.condition}</span><small>{statusLabel[c.status] ?? c.status}</small></td><td>{c.pressure_test_due_month || "未設定"}</td></tr>)}</tbody></table></div></section>}
+    {tab === "operation" && <div className="grid"><section className="panel"><h2>移動登録</h2><p className="muted">入荷・納品・回収を一つの業務画面に集約します。登録内容は監査履歴に残ります。</p><form onSubmit={submit}><label>容器ID<input name="containerId" required placeholder="台帳のUUID" /></label><label>処理<select name="action"><option value="received">入荷・返却</option><option value="delivered">納品・直送</option><option value="recovered">回収</option></select></label><label>処理日<input name="occurredOn" type="date" required /></label><label>顧客ID（納品・回収）<input name="customerId" placeholder="UUID" /></label><label>営業所ID（入荷）<input name="branchId" placeholder="UUID" /></label><button>移動を登録</button></form></section><section className="panel"><h2>次に追加する業務</h2><ul><li>バーコード／RFタグのスキャン登録</li><li>倉庫間移動・直送・棚卸差異</li><li>ハンディ取込、取込チェック、エラー保守</li><li>入荷・出荷・回収の入力モニタ</li></ul></section></div>}
+    {tab === "inspection" && <section className="panel"><h2>検査・保全</h2><div className="cards"><article><b>耐圧検査</b><span>検査先、実施月、期限、合否、委託日を容器ごとに管理</span></article><article><b>期限アラート</b><span>耐圧期限切れ、入荷・出荷警告期間を一覧化</span></article><article><b>例外管理</b><span>停滞、紛失、破損、廃棄、弁償・贈債を履歴付きで管理</span></article></div></section>}
+    {tab === "billing" && <div className="grid"><section className="panel"><h2>使用料計算</h2><p className="muted">93日間無料。94日目以降は31日あたり600円を日割りし、月次で切り捨てます。回収日を含めて計算します。</p><form onSubmit={calculateCharge}><label>貸出ID<input name="loanId" required placeholder="UUID" /></label><label>対象月<input name="billingMonth" type="month" required /></label><button>月次使用料を確定</button></form><p className="muted">同じ貸出・対象月の計算済みデータは再実行できません。</p></section><section className="panel"><h2>月次処理</h2><ul><li>使用料契約・単価の管理</li><li>請求書・明細・一覧表</li><li>販売管理システム連携データ</li><li>月次締めと確定済みデータの保護</li></ul></section></div>}
+    {tab === "masters" && <section className="panel"><h2>マスタ・連携</h2><div className="cards"><article><b>容器</b><span>瓶号、形態、保有者、製造・購入・検査情報、バーコード、RFタグ</span></article><article><b>ガス種</b><span>単位・容量・内容積・圧力・返却／消費期限・警告期間</span></article><article><b>組織・取引先</b><span>営業所、担当者、顧客、仕入先、送付先、検査先</span></article><article><b>ハンディ連携</b><span>端末マスタ配信、受信、検証、取込エラー、棚卸データ</span></article></div></section>}
+    <p id="notice" role="status">{notice}</p>
+  </main>;
 }
