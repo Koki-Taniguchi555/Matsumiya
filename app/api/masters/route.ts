@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
       case "customer":
         result = await db.from("customers").insert({ name: requiredText(body.name, "顧客名") }).select("id, name").single();
         break;
+      case "supplier":
+        result = await db.from("suppliers").insert({ code: requiredText(body.code, "仕入先コード"), name: requiredText(body.name, "仕入先名") }).select("id, code, name").single();
+        break;
       case "owner": {
         const ownerKind = String(body.ownerKind ?? "");
         if (!ownerKinds.has(ownerKind)) throw new Error("保有者区分が不正です。");

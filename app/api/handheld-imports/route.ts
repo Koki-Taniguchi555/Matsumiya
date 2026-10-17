@@ -3,7 +3,7 @@ import { recordLifecycleAction, type LifecycleAction } from "@/lib/container-ser
 import { normalizeAction, parseHandheldCsv, validateHandheldRows } from "@/lib/handheld-import";
 import { adminClient } from "@/lib/supabase";
 
-type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: LifecycleAction | null; barcode: string; occurredOn: string; containerId: string | null; customerId: string | null; branchId: string | null; error: string | null };
+type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: LifecycleAction | null; barcode: string; occurredOn: string; containerId: string | null; customerId: string | null; supplierId: string | null; branchId: string | null; error: string | null };
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,25 +14,27 @@ export async function POST(request: NextRequest) {
     if (rows.length > 500) return NextResponse.json({ error: "一度に取り込める明細は500件までです。" }, { status: 400 });
     const basicIssues = validateHandheldRows(rows);
     const db = adminClient();
-    const [containers, customers, branches] = await Promise.all([
+    const [containers, customers, suppliers, branches] = await Promise.all([
       db.from("containers").select("id, barcode, serial_number, management_number, status"),
-      db.from("customers").select("id, name"), db.from("branches").select("id, name")
+      db.from("customers").select("id, name"), db.from("suppliers").select("id, name"), db.from("branches").select("id, name")
     ]);
-    for (const result of [containers, customers, branches]) if (result.error) throw new Error(result.error.message);
+    for (const result of [containers, customers, suppliers, branches]) if (result.error) throw new Error(result.error.message);
     const resolve = (items: { id: string; name?: string }[], name: string) => items.find((item) => item.name === name)?.id ?? null;
     const resolved: ResolvedRow[] = rows.map((row) => {
       const action = normalizeAction(row.action);
       const container = containers.data?.find((item) => [item.barcode, item.serial_number, item.management_number].includes(row.barcode.trim()));
       const errors = basicIssues.filter((issue) => issue.lineNumber === row.lineNumber).map((issue) => issue.message);
       const customerId = row.customerName.trim() ? resolve(customers.data ?? [], row.customerName.trim()) : null;
+      const supplierId = row.supplierName.trim() ? resolve(suppliers.data ?? [], row.supplierName.trim()) : null;
       const branchId = row.branchName.trim() ? resolve(branches.data ?? [], row.branchName.trim()) : null;
       if (!container) errors.push("バーコード・瓶号・管理番号に一致する容器がありません。");
       if (row.customerName.trim() && !customerId) errors.push("指定された顧客名が見つかりません。");
+      if (row.supplierName.trim() && !supplierId) errors.push("指定された仕入れ先名が見つかりません。");
       if (row.branchName.trim() && !branchId) errors.push("指定された営業所名が見つかりません。");
       if (container && action === "delivered" && container.status !== "in_stock") errors.push("納品は在庫中の容器のみ可能です。");
       if (container && action === "recovered" && container.status !== "on_loan") errors.push("回収は貸出中の容器のみ可能です。");
       if (container && action === "received" && container.status === "on_loan") errors.push("貸出中の容器は入荷できません。");
-      return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, branchId, error: errors.join(" ") || null };
+      return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, supplierId, branchId, error: errors.join(" ") || null };
     });
     if (mode === "validate") return NextResponse.json({ valid: resolved.filter((row) => !row.error).length, errors: resolved.filter((row) => row.error), rows: resolved });
     const importResult = await db.from("handheld_imports").insert({ source_filename: filename, total_rows: resolved.length, error_rows: resolved.filter((row) => row.error).length, status: resolved.some((row) => row.error) ? "partially_applied" : "validated" }).select("id").single();
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
     let applied = 0;
     for (const row of resolved.filter((item) => !item.error && item.action && item.containerId)) {
       try {
-        await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, branchId: row.branchId ?? undefined });
+        await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined });
         await db.from("handheld_import_rows").update({ status: "applied" }).eq("import_id", importId).eq("line_number", row.lineNumber);
         applied += 1;
       } catch (error) {
