@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuthorizedUser } from "@/lib/auth";
 import { findSequenceErrors, movementActionLabel } from "@/lib/movement-sequence";
 import { adminClient } from "@/lib/supabase";
 
@@ -12,6 +13,7 @@ function location(state: State, branches: Map<string, string>, customers: Map<st
 
 export async function GET(request: NextRequest) {
   try {
+    if (!await requireAuthorizedUser()) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
     const containerId = request.nextUrl.searchParams.get("containerId");
     const customerId = request.nextUrl.searchParams.get("customerId");
     const supplierId = request.nextUrl.searchParams.get("supplierId");

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { requireAuthorizedUser } from "@/lib/auth";
 import { adminClient } from "@/lib/supabase";
 
 export async function GET() {
   try {
+    if (!await requireAuthorizedUser()) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
     const db = adminClient();
     const [containers, branches, customers, suppliers, owners, gases, inspections] = await Promise.all([
       db.from("containers").select("id, serial_number, management_number, barcode, container_type, container_form, status, condition, capacity_value, capacity_unit, pressure_test_due_month, current_branch_id, current_customer_id, branches(name), customers(name), container_owners(name), gas_types(name)").order("serial_number").limit(250),

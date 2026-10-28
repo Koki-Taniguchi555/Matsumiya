@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canManageMasters, requireAuthorizedUser } from "@/lib/auth";
 import { requiredText, type MasterKind } from "@/lib/master-validation";
 import { adminClient } from "@/lib/supabase";
 
@@ -7,6 +8,9 @@ const containerForms = new Set(["single", "valve_equipped", "lgc", "cardle", "ca
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuthorizedUser();
+    if (!user) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+    if (!canManageMasters(user)) return NextResponse.json({ error: "マスタ登録は管理者のみ実行できます。" }, { status: 403 });
     const body = await request.json() as Record<string, unknown>;
     const kind = body.kind as MasterKind;
     const db = adminClient();

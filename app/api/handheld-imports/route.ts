@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canRecordLifecycle, requireAuthorizedUser } from "@/lib/auth";
 import { recordLifecycleAction, type LifecycleAction } from "@/lib/container-service";
 import { normalizeAction, parseHandheldCsv, validateHandheldRows } from "@/lib/handheld-import";
 import { adminClient } from "@/lib/supabase";
@@ -8,6 +9,8 @@ type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: Li
 export async function POST(request: NextRequest) {
   try {
     const { filename, content, mode = "validate" } = await request.json() as { filename?: string; content?: string; mode?: "validate" | "apply" };
+    const user = await requireAuthorizedUser();
+    if (!user) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
     if (!filename || !content) return NextResponse.json({ error: "CSVファイル名と内容が必要です。" }, { status: 400 });
     if (content.length > 1_000_000) return NextResponse.json({ error: "CSVは1MB以下にしてください。" }, { status: 400 });
     const rows = parseHandheldCsv(content);
@@ -37,6 +40,9 @@ export async function POST(request: NextRequest) {
       return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, supplierId, branchId, error: errors.join(" ") || null };
     });
     if (mode === "validate") return NextResponse.json({ valid: resolved.filter((row) => !row.error).length, errors: resolved.filter((row) => row.error), rows: resolved });
+    if (mode !== "apply") return NextResponse.json({ error: "実行内容が不正です。" }, { status: 400 });
+    const outsideScope = resolved.find((row) => !row.error && !canRecordLifecycle(user, row.branchId));
+    if (outsideScope) return NextResponse.json({ error: `${outsideScope.lineNumber}行目の営業所を処理する権限がありません。` }, { status: 403 });
     const importResult = await db.from("handheld_imports").insert({ source_filename: filename, total_rows: resolved.length, error_rows: resolved.filter((row) => row.error).length, status: resolved.some((row) => row.error) ? "partially_applied" : "validated" }).select("id").single();
     if (importResult.error || !importResult.data) throw new Error(importResult.error?.message ?? "取込履歴を作成できませんでした。");
     const importId = importResult.data.id;
@@ -45,7 +51,7 @@ export async function POST(request: NextRequest) {
     let applied = 0;
     for (const row of resolved.filter((item) => !item.error && item.action && item.containerId)) {
       try {
-        await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined });
+        await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined, actorId: user.id });
         await db.from("handheld_import_rows").update({ status: "applied" }).eq("import_id", importId).eq("line_number", row.lineNumber);
         applied += 1;
       } catch (error) {
