@@ -37,6 +37,8 @@ begin
 end;
 $$;
 
+alter function public.prevent_access_audit_change() set search_path = public, pg_temp;
+
 create trigger access_audit_log_immutable
 before update or delete on public.app_access_audit_logs
 for each row execute function public.prevent_access_audit_change();
