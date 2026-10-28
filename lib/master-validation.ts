@@ -1,4 +1,4 @@
-export type MasterKind = "branch" | "customer" | "owner" | "gas" | "inspection" | "container";
+export type MasterKind = "branch" | "customer" | "supplier" | "owner" | "gas" | "inspection" | "container";
 
 export function requiredText(value: unknown, label: string) {
   const text = typeof value === "string" ? value.trim() : "";
