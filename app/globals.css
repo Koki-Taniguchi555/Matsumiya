@@ -36,3 +36,7 @@ input::placeholder{color:transparent}
 .legacySidebar button{padding:12px}
 @media(max-width:900px){.legacyMain{padding:22px}.legacySidebar{padding:8px}}
 @media(max-width:600px){.legacyMain{padding:16px}.legacyForm,.masterForm{padding:10px 16px 20px}.instruction{margin:14px 16px}.scanner{padding:12px 16px}.legacyPanel>h2,.panelTitle{padding:13px 16px}.filters label{margin:14px 16px}.filters div{padding:8px 16px}}
+
+/* Handheld import: align the template download button with form contents */
+.singleColumn .legacyPanel > .subtleButton{margin:0 22px 8px;}
+@media(max-width:600px){.singleColumn .legacyPanel > .subtleButton{margin-left:16px;margin-right:16px;}}
