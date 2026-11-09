@@ -49,18 +49,24 @@ export async function POST(request: NextRequest) {
     const rowInsert = await db.from("handheld_import_rows").insert(resolved.map((row) => ({ import_id: importId, line_number: row.lineNumber, raw_row: row.raw, action: row.action, barcode: row.barcode || null, container_id: row.containerId, occurred_on: /^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn) ? row.occurredOn : null, status: row.error ? "error" : "validated", error_message: row.error })));
     if (rowInsert.error) throw new Error(rowInsert.error.message);
     let applied = 0;
+    const rowOutcomes = resolved.map((row) => ({ lineNumber: row.lineNumber, barcode: row.barcode, occurredOn: row.occurredOn, action: row.raw.action ?? row.raw["処理区分"] ?? row.action ?? "", status: row.error ? "error" : "pending", error: row.error }));
     for (const row of resolved.filter((item) => !item.error && item.action && item.containerId)) {
       try {
         await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined, actorId: user.id });
         await db.from("handheld_import_rows").update({ status: "applied" }).eq("import_id", importId).eq("line_number", row.lineNumber);
         applied += 1;
+        const outcome = rowOutcomes.find((item) => item.lineNumber === row.lineNumber);
+        if (outcome) outcome.status = "applied";
       } catch (error) {
-        await db.from("handheld_import_rows").update({ status: "error", error_message: error instanceof Error ? error.message : "登録に失敗しました。" }).eq("import_id", importId).eq("line_number", row.lineNumber);
+        const message = error instanceof Error ? error.message : "登録に失敗しました。";
+        const outcome = rowOutcomes.find((item) => item.lineNumber === row.lineNumber);
+        if (outcome) { outcome.status = "error"; outcome.error = message; }
+        await db.from("handheld_import_rows").update({ status: "error", error_message: message }).eq("import_id", importId).eq("line_number", row.lineNumber);
       }
     }
     const errors = resolved.length - applied;
     await db.from("handheld_imports").update({ applied_rows: applied, error_rows: errors, status: errors === 0 ? "applied" : "partially_applied", completed_at: new Date().toISOString() }).eq("id", importId);
-    return NextResponse.json({ importId, applied, errors });
+    return NextResponse.json({ importId, applied, errors, rows: rowOutcomes });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "CSVを取り込めませんでした。" }, { status: 400 });
   }
