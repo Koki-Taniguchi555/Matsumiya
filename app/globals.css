@@ -40,3 +40,24 @@ input::placeholder{color:transparent}
 /* Handheld import: align the template download button with form contents */
 .singleColumn .legacyPanel > .subtleButton{margin:0 22px 8px;}
 @media(max-width:600px){.singleColumn .legacyPanel > .subtleButton{margin-left:16px;margin-right:16px;}}
+
+
+/* Detailed handheld CSV import outcomes */
+.importDetails{margin:8px 22px 24px;border:1px solid #c7d5e1;border-radius:7px;background:#fff;overflow:hidden}
+.importDetailsHeading{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 17px;background:#e3edf5;border-bottom:1px solid #c7d5e1;color:#234764}
+.importDetailsHeading h3{margin:0;font-size:15px}
+.importDetailsHeading span{font-size:12px;font-weight:600}
+.importHelp{font-size:12px;line-height:1.7;color:#506779;margin:13px 17px 7px}
+.importId{font-size:11px;color:#6b7f91;margin:7px 17px;overflow-wrap:anywhere}
+.importFilters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 17px}
+.importFilters button{cursor:pointer;border:1px solid #aebfce;background:#f6fafc;color:#28516d;border-radius:5px;padding:7px 12px;font:inherit;font-size:12px}
+.importFilters button.active{background:#286b98;border-color:#286b98;color:#fff;font-weight:700}
+.importTable{width:100%;border-collapse:collapse;min-width:770px;font-size:12px}
+.importTable th,.importTable td{text-align:left;padding:10px 12px;border-bottom:1px solid #dce5ec;vertical-align:top}
+.importTable th{background:#f0f5f9;color:#294d67;font-weight:700;white-space:nowrap}
+.importTable tbody tr:nth-child(even){background:#f9fbfd}
+.importStatus{display:inline-block;border-radius:4px;padding:3px 8px;font-weight:700;white-space:nowrap}
+.importStatus.passed{background:#e0f2e8;color:#236548}
+.importStatus.failed{background:#fce6e5;color:#a22c2c}
+.importError{color:#a22c2c;min-width:220px;line-height:1.6}
+@media(max-width:600px){.importDetails{margin:8px 16px 20px}.importDetailsHeading{align-items:flex-start;flex-direction:column;gap:5px}.importFilters{margin:12px}}
