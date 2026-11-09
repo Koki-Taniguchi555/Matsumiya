@@ -61,3 +61,7 @@ input::placeholder{color:transparent}
 .importStatus.failed{background:#fce6e5;color:#a22c2c}
 .importError{color:#a22c2c;min-width:220px;line-height:1.6}
 @media(max-width:600px){.importDetails{margin:8px 16px 20px}.importDetailsHeading{align-items:flex-start;flex-direction:column;gap:5px}.importFilters{margin:12px}}
+
+/* Usage-charge billing month dropdown */
+.filters .billingMonthSelect{display:block;width:min(680px,100%);min-height:43px;padding:11px 12px;margin-top:4px;border:1px solid #aebecd;border-radius:5px;background:#fff;color:#1f2937;font:inherit;cursor:pointer}
+.filters .billingMonthSelect:focus{outline:2px solid #8fb8d5;outline-offset:1px;border-color:#3b80b1}
