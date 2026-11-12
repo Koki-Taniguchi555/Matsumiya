@@ -4,7 +4,7 @@ import { recordLifecycleAction, type LifecycleAction } from "@/lib/container-ser
 import { normalizeAction, parseHandheldCsv, validateHandheldRows } from "@/lib/handheld-import";
 import { adminClient } from "@/lib/supabase";
 
-type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: LifecycleAction | null; barcode: string; occurredOn: string; containerId: string | null; customerId: string | null; supplierId: string | null; branchId: string | null; error: string | null };
+type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: LifecycleAction | null; barcode: string; occurredOn: string; containerId: string | null; customerId: string | null; supplierId: string | null; branchId: string | null; error: string | null; warnings: string[] };
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,16 +17,31 @@ export async function POST(request: NextRequest) {
     if (rows.length > 500) return NextResponse.json({ error: "一度に取り込める明細は500件までです。" }, { status: 400 });
     const basicIssues = validateHandheldRows(rows);
     const db = adminClient();
-    const [containers, customers, suppliers, branches] = await Promise.all([
-      db.from("containers").select("id, barcode, serial_number, management_number, status"),
-      db.from("customers").select("id, name"), db.from("suppliers").select("id, name"), db.from("branches").select("id, name")
+    const [containers, customers, suppliers, branches, gasTypes] = await Promise.all([
+      db.from("containers").select("id, barcode, serial_number, management_number, status, gas_type_id, capacity_value, capacity_unit"),
+      db.from("customers").select("id, name"), db.from("suppliers").select("id, name"), db.from("branches").select("id, name"), db.from("gas_types").select("id, name")
     ]);
-    for (const result of [containers, customers, suppliers, branches]) if (result.error) throw new Error(result.error.message);
+    for (const result of [containers, customers, suppliers, branches, gasTypes]) if (result.error) throw new Error(result.error.message);
     const resolve = (items: { id: string; name?: string }[], name: string) => items.find((item) => item.name === name)?.id ?? null;
     const resolved: ResolvedRow[] = rows.map((row) => {
       const action = normalizeAction(row.action);
       const container = containers.data?.find((item) => [item.barcode, item.serial_number, item.management_number].includes(row.barcode.trim()));
       const errors = basicIssues.filter((issue) => issue.lineNumber === row.lineNumber).map((issue) => issue.message);
+      const warnings: string[] = [];
+      const gas = (gasTypes.data ?? []).find((item) => item.id === container?.gas_type_id);
+      if (row.gasName.trim()) {
+        if (!gas) warnings.push("台帳のガス種が未設定のため照合できません。");
+        else if (gas.name !== row.gasName.trim()) errors.push(`ガス種不一致：台帳「${gas.name}」、CSV「${row.gasName.trim()}」`);
+      }
+      if (row.capacityValue.trim() && Number.isFinite(Number(row.capacityValue)) && Number(row.capacityValue) > 0) {
+        const capacity = container?.capacity_value == null ? null : Number(container.capacity_value);
+        if (capacity == null) warnings.push("台帳の容量が未設定のため照合できません。");
+        else if (row.capacityUnit.trim() && container?.capacity_unit && row.capacityUnit.trim() !== container.capacity_unit.trim()) {
+          warnings.push(`容量単位の不一致：台帳「${container.capacity_unit}」、CSV「${row.capacityUnit.trim()}」。単位換算を確認してください。`);
+        } else if (Math.abs(capacity - Number(row.capacityValue)) > 0.000001) {
+          warnings.push(`容量差異：台帳「${capacity}${container?.capacity_unit ?? ""}」、CSV「${row.capacityValue.trim()}${row.capacityUnit.trim() || container?.capacity_unit || ""}」。実充填量を確認してください。`);
+        }
+      }
       const customerId = row.customerName.trim() ? resolve(customers.data ?? [], row.customerName.trim()) : null;
       const supplierId = row.supplierName.trim() ? resolve(suppliers.data ?? [], row.supplierName.trim()) : null;
       const branchId = row.branchName.trim() ? resolve(branches.data ?? [], row.branchName.trim()) : null;
@@ -37,7 +52,7 @@ export async function POST(request: NextRequest) {
       if (container && action === "delivered" && container.status !== "in_stock") errors.push("納品は在庫中の容器のみ可能です。");
       if (container && action === "recovered" && container.status !== "on_loan") errors.push("回収は貸出中の容器のみ可能です。");
       if (container && action === "received" && container.status === "on_loan") errors.push("貸出中の容器は入荷できません。");
-      return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, supplierId, branchId, error: errors.join(" ") || null };
+      return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, supplierId, branchId, error: errors.join(" ") || null, warnings };
     });
     if (mode === "validate") return NextResponse.json({ valid: resolved.filter((row) => !row.error).length, errors: resolved.filter((row) => row.error), rows: resolved });
     if (mode !== "apply") return NextResponse.json({ error: "実行内容が不正です。" }, { status: 400 });
@@ -49,7 +64,7 @@ export async function POST(request: NextRequest) {
     const rowInsert = await db.from("handheld_import_rows").insert(resolved.map((row) => ({ import_id: importId, line_number: row.lineNumber, raw_row: row.raw, action: row.action, barcode: row.barcode || null, container_id: row.containerId, occurred_on: /^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn) ? row.occurredOn : null, status: row.error ? "error" : "validated", error_message: row.error })));
     if (rowInsert.error) throw new Error(rowInsert.error.message);
     let applied = 0;
-    const rowOutcomes = resolved.map((row) => ({ lineNumber: row.lineNumber, barcode: row.barcode, occurredOn: row.occurredOn, action: row.raw.action ?? row.raw["処理区分"] ?? row.action ?? "", status: row.error ? "error" : "pending", error: row.error }));
+    const rowOutcomes = resolved.map((row) => ({ lineNumber: row.lineNumber, barcode: row.barcode, occurredOn: row.occurredOn, action: row.raw.action ?? row.raw["処理区分"] ?? row.action ?? "", status: row.error ? "error" : "pending", error: row.error, warnings: row.warnings }));
     for (const row of resolved.filter((item) => !item.error && item.action && item.containerId)) {
       try {
         await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined, actorId: user.id });
