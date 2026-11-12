@@ -65,3 +65,11 @@ input::placeholder{color:transparent}
 /* Usage-charge billing month dropdown */
 .filters .billingMonthSelect{display:block;width:min(680px,100%);min-height:43px;padding:11px 12px;margin-top:4px;border:1px solid #aebecd;border-radius:5px;background:#fff;color:#1f2937;font:inherit;cursor:pointer}
 .filters .billingMonthSelect:focus{outline:2px solid #8fb8d5;outline-offset:1px;border-color:#3b80b1}
+
+/* Individual customer invoice preview */
+.invoiceCustomerPicker{display:block;margin:0 0 20px;color:#2d4b64;font-size:13px;font-weight:700}
+.invoiceCustomerPicker select{display:block;margin-top:8px;width:min(520px,100%);padding:11px 12px;border:1px solid #aebecd;border-radius:5px;background:#fff;color:#1f2937;font:inherit}
+.invoiceRecipient{display:flex;flex-direction:column;gap:8px;margin:14px 0 20px;padding:14px 16px;border:1px solid #d1dce6;border-radius:5px;background:#f6f9fc}
+.invoiceRecipient b{font-size:17px;color:#203e5b}
+.invoiceRecipient span{font-size:12px;color:#526779}
+.invoiceItemsTable{min-width:730px}
