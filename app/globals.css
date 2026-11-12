@@ -106,3 +106,23 @@ input::placeholder{color:transparent}
 .historyOrderReason textarea{display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:10px;border:1px solid #aebecd;border-radius:5px;font:inherit;resize:vertical}
 .historyOrderActions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .historyOrderButton{padding:5px 9px;font-size:12px;white-space:nowrap}
+
+/* Handheld paper-slip reconciliation */
+.reconciliationPanel{padding:18px 20px 22px}
+.reconciliationBatchPicker{display:block;margin:18px 0;font-size:13px;font-weight:700;color:#304f68}
+.reconciliationBatchPicker select{display:block;width:100%;max-width:840px;margin-top:7px;padding:10px 12px;border:1px solid #b1c5d5;border-radius:5px;background:#fff;color:#263747;font:inherit}
+.reconciliationCounts{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
+.reconciliationCounts span{padding:8px 12px;border-radius:5px;border:1px solid #d4e1eb;background:#f6f9fc;color:#35536b;font-size:12px;font-weight:700}
+.reconciliationTable{min-width:1100px}
+.reconciliationTable td{vertical-align:top}
+.reconciliationTable small{display:block;line-height:1.5;margin-top:5px;color:#697d8d}
+.reconciliationTable .reconciliationError{color:#a55419}
+.reconciliationActions{min-width:190px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.reconciliationActions label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.reconciliationActions textarea{width:100%;box-sizing:border-box;min-height:49px;padding:7px;border:1px solid #b5c5d3;border-radius:4px;font:inherit}
+.reconciliationRowButtons{display:flex;gap:6px;flex-wrap:wrap}
+.reconciliationRowButtons button{border:1px solid #abc2d5;border-radius:4px;padding:7px 8px;background:#f6f9fc;color:#2a506a;cursor:pointer}
+.reconciliationRowButtons button:disabled{opacity:.45;cursor:not-allowed}
+.reconciliationFooter{margin-top:20px;display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.reconciliationMessage{margin:12px 0;padding:10px 12px;background:#fff8e8;border-left:3px solid #d5a34a;color:#6d5017;font-size:13px}
+.reconciliationSuccess{margin:12px 0;padding:10px 12px;background:#f0f6fc;border:1px solid #c4d9ea;color:#2b516d;font-size:13px}
