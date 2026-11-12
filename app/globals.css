@@ -92,3 +92,17 @@ input::placeholder{color:transparent}
 
 /* Handheld import discrepancies that require manual review */
 .importWarning{color:#97560c;background:#fff7e6;padding:5px 8px;margin:4px 0;border-left:3px solid #d79a35;line-height:1.6}
+
+/* Same-day container history ordering review */
+.historyOrderMessage{padding:15px 22px;color:#385574}
+.historyOrderPanel{padding:20px 22px 25px}
+.historyOrderPanel h2{margin:0 0 12px;font-size:17px;color:#294964}
+.historyOrderRows{display:flex;flex-direction:column;gap:8px;margin:15px 0}
+.historyOrderRow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:12px;background:#f5f8fa;border:1px solid #d7e2eb;border-radius:6px;font-size:13px}
+.historyOrderRow > div{display:flex;gap:8px}
+.historyOrderRow button{cursor:pointer;padding:7px 12px;border:1px solid #9db5c8;border-radius:5px;background:white;color:#234a68}
+.historyOrderRow button:disabled{opacity:.4;cursor:not-allowed}
+.historyOrderReason{display:block;font-size:13px;font-weight:700;color:#34516b;margin:15px 0}
+.historyOrderReason textarea{display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:10px;border:1px solid #aebecd;border-radius:5px;font:inherit;resize:vertical}
+.historyOrderActions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.historyOrderButton{padding:5px 9px;font-size:12px;white-space:nowrap}
