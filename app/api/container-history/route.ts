@@ -43,12 +43,34 @@ export async function GET(request: NextRequest) {
       containerIds.length ? db.from("container_audit_logs").select("id, container_id, action, occurred_on").in("container_id", containerIds).order("occurred_on", { ascending: true }).order("id", { ascending: true }) : Promise.resolve({ data: [], error: null })
     ]);
     if (containers.error || allContainerAudits.error) throw new Error(containers.error?.message ?? allContainerAudits.error?.message);
+    const reviews = containerIds.length
+      ? await db.from("container_history_order_reviews").select("container_id, occurred_on, ordered_audit_ids, reason, reviewed_at")
+          .in("container_id", containerIds).order("reviewed_at", { ascending: false }).limit(1000)
+      : { data: [], error: null };
+    if (reviews.error) throw new Error(reviews.error.message);
+    const latestReviews = new Map<string, { ordered_audit_ids: number[]; reason: string }>();
+    for (const item of reviews.data ?? []) {
+      const key = `${item.container_id}:${item.occurred_on}`;
+      if (!latestReviews.has(key)) latestReviews.set(key, item);
+    }
+    const orderIndex = (item: { id: number; container_id: string; occurred_on: string }) => {
+      const selected = latestReviews.get(`${item.container_id}:${item.occurred_on}`)?.ordered_audit_ids;
+      return selected ? selected.indexOf(Number(item.id)) : -1;
+    };
+    const sortAudits = <T extends { id: number; container_id: string; occurred_on: string }>(items: T[]) => [...items].sort((a, b) => {
+      const byDate = a.occurred_on.localeCompare(b.occurred_on);
+      if (byDate) return byDate;
+      if (a.container_id !== b.container_id) return a.container_id.localeCompare(b.container_id);
+      const aPos = orderIndex(a);
+      const bPos = orderIndex(b);
+      return aPos >= 0 && bPos >= 0 ? aPos - bPos : Number(a.id) - Number(b.id);
+    });
     const containerMap = new Map((containers.data ?? []).map((item) => [item.id, item]));
     const sequenceErrors = new Map<number, string>();
     const auditsByContainer = new Map<string, { id: number; action: string }[]>();
-    for (const audit of allContainerAudits.data ?? []) auditsByContainer.set(audit.container_id, [...(auditsByContainer.get(audit.container_id) ?? []), audit]);
+    for (const audit of sortAudits(allContainerAudits.data ?? [])) auditsByContainer.set(audit.container_id, [...(auditsByContainer.get(audit.container_id) ?? []), audit]);
     for (const items of auditsByContainer.values()) findSequenceErrors(items).forEach((error, index) => { if (error) sequenceErrors.set(items[index].id, error); });
-    const history = (audits.data ?? []).map((audit, index) => {
+    const history = sortAudits(audits.data ?? []).map((audit) => {
       const before = (audit.before_state ?? {}) as State;
       const after = (audit.after_state ?? {}) as State;
       const supplier = audit.supplier_id ? supplierNames.get(audit.supplier_id) ?? "仕入れ先（削除済み）" : "－";
@@ -62,7 +84,8 @@ export async function GET(request: NextRequest) {
         from, to, customer: audit.customer_id ? customerNames.get(audit.customer_id) ?? "得意先（削除済み）" : "－",
         supplier, handledBranch: audit.handled_branch_id ? branchNames.get(audit.handled_branch_id) ?? "営業所（削除済み）" : "－",
         source: importedKeys.has(`${audit.action}:${audit.occurred_on}`) ? "ハンディCSV" : "画面入力",
-        registeredAt: audit.created_at, sequenceError: sequenceErrors.get(audit.id) ?? null
+        registeredAt: audit.created_at, sequenceError: sequenceErrors.get(audit.id) ?? null,
+        orderAdjusted: latestReviews.has(`${audit.container_id}:${audit.occurred_on}`)
       };
     }).reverse();
     return NextResponse.json({ history });
