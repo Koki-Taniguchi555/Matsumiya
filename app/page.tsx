@@ -172,7 +172,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/history-order", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(orderEdit).replace('"orderedIds":', '"orderedAuditIds":')
+        body: JSON.stringify({ containerId: orderEdit.containerId, occurredOn: orderEdit.occurredOn, orderedAuditIds: orderEdit.orderedIds, reason: orderEdit.reason })
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "履歴順を保存できませんでした。");
