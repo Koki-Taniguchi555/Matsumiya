@@ -73,3 +73,19 @@ input::placeholder{color:transparent}
 .invoiceRecipient b{font-size:17px;color:#203e5b}
 .invoiceRecipient span{font-size:12px;color:#526779}
 .invoiceItemsTable{min-width:730px}
+
+/* Monthly workflow and report tables */
+.monthlyControls{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;padding:20px 22px 24px}
+.monthlyControls label{font-size:13px;font-weight:700;color:#37546b;min-width:240px}
+.monthlyControls select{display:block;width:100%;min-height:43px;margin-top:8px;padding:9px 12px;border:1px solid #aebecd;border-radius:5px;background:white;color:#1f2937;font:inherit}
+.monthlyTabs{display:flex;flex-wrap:wrap;gap:10px;padding:18px 22px;border-bottom:1px solid #d7e1ea}
+.monthlyTabs button{padding:12px 16px;font:inherit;font-size:13px;cursor:pointer;border:1px solid #b7c9d9;border-radius:6px;background:#f7fafc;color:#32536d}
+.monthlyTabs button.selected{background:#286b98;color:#fff;border-color:#286b98;font-weight:700}
+.monthlySection{padding:20px 22px 26px}
+.monthlySection h3{font-size:16px;margin:0 0 16px;color:#244b69}
+.monthlySectionHead{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:15px}
+.monthlySectionHead h3{margin:0}
+.monthlyTable{min-width:650px}
+.monthlyNotice{margin:15px 22px;padding:12px 14px;background:#f3f7fb;color:#4f6477;border:1px solid #d6e3ee;border-radius:5px;font-size:12px;line-height:1.6}
+.monthlyError{margin:0 22px 20px;color:#a22c2c;font-size:13px}
+@media(max-width:600px){.monthlyControls,.monthlySection{padding:16px}.monthlyTabs{padding:14px 16px;gap:6px}.monthlyTabs button{padding:9px 10px}.monthlyControls label{width:100%}.monthlyNotice{margin:12px 16px}}
