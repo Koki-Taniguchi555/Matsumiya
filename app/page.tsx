@@ -25,7 +25,7 @@ const menus: { heading: string; items: [Page, string][] }[] = [
   { heading: "日常業務", items: [["daily", "容器移動入力"], ["handheld", "ハンディ取り込み"]] },
   { heading: "照会", items: [["ledger", "容器台帳照会"], ["history", "容器移動履歴照会"], ["inspection", "検査・保全照会"]] },
   { heading: "請求・月次", items: [["billing", "使用料計算"], ["monthly", "月次処理・帳票"]] },
-  { heading: "マスタ・設定", items: [["masters", "容器・ガス種マスタ"], ["masters", "組織・取引先マスタ"]] }
+  { heading: "マスタ・設定", items: [["masters", "マスタ一覧"]] }
 ];
 
 export default function Home() {
