@@ -178,3 +178,5 @@ input::placeholder{color:transparent}
 @keyframes networkProgress{from{left:0}to{left:62%}}
 @media(max-width:640px){.networkActivityIndicator{top:8px;right:8px;left:8px;max-width:none}}
 @media(prefers-reduced-motion:reduce){.networkActivitySpinner,.networkButtonSpinner,.networkActivityProgress{animation-duration:1.8s}}
+
+.networkButtonBusy::after{content:"";display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-bottom-color:transparent;border-radius:50%;margin-inline-start:8px;vertical-align:middle;animation:networkSpin .7s linear infinite}
