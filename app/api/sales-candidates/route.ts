@@ -132,7 +132,7 @@ async function loadCandidates(importId: string) {
     const fillUnit=fillUnitRaw==="㎥"?"m3":fillUnitRaw;
     const fillNumber=Number(fillText);
     const targetUnit=quantitySuggestion?.unit??match?.unit??null;
-    const actualFillValid=!!fillText&&/^\\d+(?:\\.\\d{1,3})?$/.test(fillText)&&
+    const actualFillValid=!!fillText&&/^\d+(?:\.\d{1,3})?$/.test(fillText)&&
       Number.isFinite(fillNumber)&&fillNumber>0&&fillNumber<=9999999 &&
       !!fillUnit&&fillUnit===targetUnit;
     const actualFillSuggestion=actualFillValid?{
