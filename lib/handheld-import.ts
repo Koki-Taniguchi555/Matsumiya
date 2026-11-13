@@ -66,7 +66,7 @@ export function validateHandheldRows(rows: HandheldRow[]): RowIssue[] {
     if (action && !row.branchName.trim()) issues.push("すべての処理に営業所が必要です。");
     if (row.actualFillValue.trim() || row.actualFillUnit.trim()) {
       const v = Number(row.actualFillValue);
-      if (!row.actualFillValue.trim() || !Number.isFinite(v) || v <= 0 || v > 9999999 || !/^\\d+(?:\\.\\d{1,3})?$/.test(row.actualFillValue.trim()))
+      if (!row.actualFillValue.trim() || !Number.isFinite(v) || v <= 0 || v > 9999999 || !/^\d+(?:\.\d{1,3})?$/.test(row.actualFillValue.trim()))
         issues.push("実充填量は0より大きい数値（小数3桁まで）で入力してください。");
       if (!["kg","m3","㎥","本"].includes(row.actualFillUnit.trim())) issues.push("実充填量単位はkg・m3（㎥）・本のいずれかにしてください。");
     }
