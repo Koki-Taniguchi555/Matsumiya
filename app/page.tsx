@@ -75,6 +75,8 @@ export default function Home() {
   const [productMasterForm, setProductMasterForm] = useState({gas:"",supplier:"",owner:"",code:"",name:"",unit:"本"});
   const [priceMasterForm, setPriceMasterForm] = useState({product:"",kind:"sale" as "sale"|"purchase",customer:"",supplier:"",owner:"",price:"",from:"",until:""});
   const [salesMasterMessage, setSalesMasterMessage] = useState("");
+  const [salesPriceHistory, setSalesPriceHistory] = useState<{date:string;quantity:number;unit:string;salePrice:number;purchasePrice:number;reviewedAt:string}[]>([]);
+  const [salesPriceHistoryNote, setSalesPriceHistoryNote] = useState("");
   const [salesBusy, setSalesBusy] = useState(false);
   const [salesMessage, setSalesMessage] = useState("");
   const [historyContainerId, setHistoryContainerId] = useState("");
@@ -362,7 +364,21 @@ export default function Home() {
     }catch(error){setSalesMessage(error instanceof Error?error.message:"取得できませんでした。");}
     finally{setSalesBusy(false);}
   }
+  async function loadPreviousCandidatePrices(item:SalesCandidate) {
+    const productCode=item.productCode||item.suggestion?.productCode||"";
+    setSalesPriceHistory([]);setSalesPriceHistoryNote("");
+    if(!item.customer||!productCode)return;
+    try{
+      const query=new URLSearchParams({customer:item.customer,productCode});
+      const response=await fetch(`/api/sales-price-history?${query.toString()}`);
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error??"参照履歴を取得できませんでした。");
+      setSalesPriceHistory(data.history??[]);
+      setSalesPriceHistoryNote(data.note??"");
+    }catch(error){setSalesPriceHistoryNote(error instanceof Error?error.message:"過去の確認記録を取得できませんでした。");}
+  }
   function editSalesCandidate(item:SalesCandidate) {
+    void loadPreviousCandidatePrices(item);
     setSalesDraftId(item.id);setSalesMessage("");
     setSalesDraft({
       productCode:item.productCode,productName:item.productName,supplier:item.supplier,
@@ -492,6 +508,7 @@ export default function Home() {
 {salesResult && <><div className="reconciliationCounts"><span>出荷候補 {salesResult.summary.total}件</span><span>確認済み {salesResult.summary.confirmed}件</span><span>未確認 {salesResult.summary.pending}件</span><span>確認済み売上合計 {salesResult.summary.totalSalesYen.toLocaleString("ja-JP")}円（税抜・仮）</span></div>
 <div className="tableWrap"><table className="legacyTable salesCandidateTable"><thead><tr><th>伝票／出荷日</th><th>得意先</th><th>瓶号・ガス</th><th>商品コード・商品名</th><th>仕入先</th><th>数量・単位</th><th>売上単価／仕入単価</th><th>確認</th></tr></thead><tbody>{salesResult.candidates.length===0?<tr><td colSpan={8}>この取込に、照合済みの出荷明細はありません。</td></tr>:salesResult.candidates.map(row=><tr key={row.id}><td>{row.referenceNumber||"—"}<small>{row.deliveredOn}</small></td><td>{row.customer||"未設定"}</td><td>{row.serialNumber}<small>{row.gasName||"未設定"}</small></td><td>{row.productCode||"未設定"}<small>{row.productName||"未設定"}</small></td><td>{row.supplier||"未設定"}</td><td>{row.quantity} {row.unit}</td><td>{row.saleUnitPrice===null?"未設定":row.saleUnitPrice.toLocaleString("ja-JP")+"円"}<small>仕入：{row.purchaseUnitPrice===null?"未設定":row.purchaseUnitPrice.toLocaleString("ja-JP")+"円"}</small></td><td><text>{row.confirmed?"確認済み":"要確認"}</text><button type="button" className="subtleButton" onClick={()=>editSalesCandidate(row)}>{row.confirmed?"再確認":"入力・確認"}</button></td></tr>)}</tbody></table></div>
 {salesDraftId!==null && <section className="salesEditPanel"><h3>売上候補の入力・確認（明細ID {salesDraftId}）</h3><div className="salesEditGrid">
+{salesPriceHistoryNote&&<div className="salesSuggestion"><b>同じ得意先・商品の過去の確認記録（参照用）</b><p className="instruction">{salesPriceHistoryNote}</p>{salesPriceHistory.length?<div className="tableWrap"><table className="legacyTable"><thead><tr><th>出荷日</th><th>数量</th><th>確認時の売上単価</th><th>確認時の仕入単価</th></tr></thead><tbody>{salesPriceHistory.map((item,index)=><tr key={index}><td>{item.date}</td><td>{item.quantity} {item.unit}</td><td>{item.salePrice.toLocaleString("ja-JP")}円</td><td>{item.purchasePrice.toLocaleString("ja-JP")}円</td></tr>)}</tbody></table></div>:<p>該当する過去の確認記録はありません。</p>}</div>}
 {salesResult?.candidates.find(item=>item.id===salesDraftId)?.suggestion && <div className="salesSuggestion"><b>商品・単価マスタ候補</b><p>{salesResult.candidates.find(item=>item.id===salesDraftId)?.suggestion?.productCode} ／ {salesResult.candidates.find(item=>item.id===salesDraftId)?.suggestion?.productName}</p><p>売上単価：{salesResult.candidates.find(item=>item.id===salesDraftId)?.suggestion?.saleUnitPrice??"未設定"}円 ／ 仕入単価：{salesResult.candidates.find(item=>item.id===salesDraftId)?.suggestion?.purchaseUnitPrice??"未設定"}円</p>{salesResult.candidates.find(item=>item.id===salesDraftId)?.suggestion?.warnings.map((warning,index)=><p className="salesWarning" key={index}>{warning}</p>)}<button type="button" className="subtleButton" onClick={applySalesSuggestion}>候補を入力欄に反映（未確定）</button></div>}
 <label>商品コード<input value={salesDraft.productCode} onChange={e=>setSalesDraft(v=>({...v,productCode:e.target.value}))}/></label>
 <label>商品名<input value={salesDraft.productName} onChange={e=>setSalesDraft(v=>({...v,productName:e.target.value}))}/></label>
