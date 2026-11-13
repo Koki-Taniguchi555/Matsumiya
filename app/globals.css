@@ -155,3 +155,15 @@ input::placeholder{color:transparent}
 .salesEditGrid select,.salesEditGrid textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid #b5cadb;border-radius:5px;background:#fff;color:#20394d;font:inherit}
 .salesEditGrid .salesQuantityReason{grid-column:1/-1}
 .salesEditGrid .salesQuantityReason textarea{min-height:72px}
+
+/* Expandable registered price rule details */
+.salesRuleDetailToggle{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;cursor:pointer;border:1px solid #9db7ca;border-radius:6px;background:#f4f9fd;color:#245171;padding:7px 11px;font:inherit;font-weight:600}
+.salesRuleDetailToggle:hover{background:#e7f2fa}
+.salesRuleToggleLabel{font-size:12px;font-weight:500}
+.salesRuleDetailRow>td{padding:0!important;background:#f6f9fc}
+.salesRuleDetailPanel{padding:18px 20px;border-left:3px solid #b6d3e6}
+.salesRuleDetailPanel h4{font-size:14px;color:#254a67;margin:6px 0 10px}
+.salesRuleDetailPanel h4:not(:first-child){margin-top:22px}
+.salesRuleNestedTable{min-width:640px;background:#fff}
+.salesRuleDetailPanel .instruction{margin-top:14px}
+@media(max-width:640px){.salesRuleDetailPanel{padding:12px}.salesRuleDetailToggle{padding:6px 8px}.salesRuleToggleLabel{font-size:11px}}
