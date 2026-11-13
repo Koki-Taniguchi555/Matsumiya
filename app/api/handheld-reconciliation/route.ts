@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     const auth = await requireReconciler();
     if (auth.error || !auth.user) return auth.error;
     const body = await request.json() as {
-      action?: "check" | "finalize"; importId?: string; rowId?: number;
+      action?: "check" | "bulk_check" | "finalize"; importId?: string; rowId?: number; rowIds?: number[];
       decision?: "matched" | "hold"; note?: string; paperSlipChecked?: boolean
     };
     if (!body.importId || !/^[0-9a-f-]{36}$/i.test(body.importId)) throw new Error("取込履歴を選択してください。");
@@ -121,6 +121,40 @@ export async function POST(request: NextRequest) {
       });
       if (audit.error) throw new Error(audit.error.message);
       return NextResponse.json({ ok: true, batch: await loadBatch(body.importId) });
+    }
+    if (body.action === "bulk_check") {
+      if (!body.paperSlipChecked) throw new Error("選択した全明細について紙伝票との一致確認が必要です。");
+      if (!Array.isArray(body.rowIds) || !body.rowIds.length || body.rowIds.length > 500) {
+        throw new Error("一括照合する明細を1〜500件選択してください。");
+      }
+      const ids = body.rowIds;
+      if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+        throw new Error("選択明細に不正なIDまたは重複があります。");
+      }
+      const eligible = new Map(dataset.rows.filter(row =>
+        row.status === "applied" && row.decision === "unreviewed" &&
+        row.issues.length === 0 && !row.error
+      ).map(row => [row.id, row]));
+      if (ids.some(id => !eligible.has(id))) {
+        throw new Error("一括照合できるのは、未照合・登録成功・台帳との差異なしの明細のみです。保留・照合済・要確認・エラー行は対象外です。");
+      }
+      const now = new Date().toISOString();
+      const note = "紙伝票と目視照合済み（一括操作・自動照合ではありません）";
+      const saved = await db.from("handheld_reconciliation_checks").upsert(
+        ids.map(id => ({
+          import_row_id: id, decision: "matched" as const, note,
+          checked_by: auth.user.id, checked_at: now
+        })),
+        { onConflict: "import_row_id" }
+      );
+      if (saved.error) throw new Error(saved.error.message);
+      const audit = await db.from("handheld_reconciliation_events").insert(
+        ids.map(id => ({
+          import_row_id: id, decision: "matched" as const, note, checked_by: auth.user.id
+        }))
+      );
+      if (audit.error) throw new Error("照合は保存されましたが、監査履歴の記録に失敗しました。管理者へ連絡してください：" + audit.error.message);
+      return NextResponse.json({ ok: true, matchedCount: ids.length, batch: await loadBatch(body.importId) });
     }
     if (body.action === "finalize") {
       if (!dataset.summary.applied) throw new Error("確定対象の登録成功明細がありません。");
