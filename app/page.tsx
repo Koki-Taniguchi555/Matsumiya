@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { handheldCsvTemplate } from "@/lib/handheld-import";
 
 type Choice = { id: string; name: string; code?: string };
@@ -73,6 +73,7 @@ export default function Home() {
   const [salesDraft, setSalesDraft] = useState<SalesDraft>({productCode:"",productName:"",supplier:"",quantity:"1",unit:"本",saleUnitPrice:"",purchaseUnitPrice:"",note:"",quantitySource:"manual",quantityReason:"",quantityRuleId:null});
   const [salesMasters, setSalesMasters] = useState<SalesMasters|null>(null);
   const [salesMasterTab, setSalesMasterTab] = useState<"product"|"price"|"quantity">("product");
+  const [expandedSalesMasterId, setExpandedSalesMasterId] = useState<string | null>(null);
   const [productMasterForm, setProductMasterForm] = useState({gas:"",supplier:"",owner:"",code:"",name:"",unit:"本"});
   const [priceMasterForm, setPriceMasterForm] = useState({product:"",kind:"sale" as "sale"|"purchase",customer:"",supplier:"",owner:"",price:"",from:"",until:""});
   const [quantityMasterForm, setQuantityMasterForm] = useState({customer:"",product:"",unit:"",perContainer:"",from:"",until:""});
@@ -579,7 +580,19 @@ export default function Home() {
 <label>適用開始日<input type="date" value={priceMasterForm.from} onChange={e=>setPriceMasterForm(v=>({...v,from:e.target.value}))}/></label>
 <label>適用終了日（任意）<input type="date" value={priceMasterForm.until} onChange={e=>setPriceMasterForm(v=>({...v,until:e.target.value}))}/></label>
 </div><button type="button" className="actionButton" disabled={salesBusy} onClick={()=>void saveSalesMaster()}>単価ルールを登録</button></div>}
-<div className="salesGroupSection"><h3>登録済み商品・単価ルール</h3><p className="instruction">商品マスタ：{salesMasters.products.length}件 ／ 単価ルール：{salesMasters.prices.length}件 ／ 得意先別換算ルール：{salesMasters.quantities.length}件。価格の適用条件が重複する場合は候補を自動採用しません。</p><div className="tableWrap"><table className="legacyTable"><thead><tr><th>商品コード</th><th>商品名</th><th>ガス種</th><th>単位</th><th>単価ルール</th></tr></thead><tbody>{salesMasters.products.length?salesMasters.products.map(p=><tr key={p.id}><td>{p.product_code}</td><td>{p.product_name}</td><td>{salesMasters.gases.find(g=>g.id===p.gas_type_id)?.name??"—"}</td><td>{p.unit}</td><td>{salesMasters.prices.filter(rule=>rule.product_mapping_id===p.id).length}件</td></tr>):<tr><td colSpan={5}>商品マスタはまだありません。</td></tr>}</tbody></table></div></div>
+<div className="salesGroupSection"><h3>登録済み商品・単価ルール</h3><p className="instruction">商品マスタ：{salesMasters.products.length}件 ／ 単価ルール：{salesMasters.prices.length}件 ／ 得意先別換算ルール：{salesMasters.quantities.length}件。価格の適用条件が重複する場合は候補を自動採用しません。</p><div className="tableWrap"><table className="legacyTable"><thead><tr><th>商品コード</th><th>商品名</th><th>ガス種</th><th>単位</th><th>単価ルール</th></tr></thead><tbody>{salesMasters.products.length?salesMasters.products.map(p=>{
+  const matchedPrices=salesMasters.prices.filter(rule=>rule.product_mapping_id===p.id);
+  const matchedQuantities=salesMasters.quantities.filter(rule=>rule.product_mapping_id===p.id);
+  const expanded=expandedSalesMasterId===p.id;
+  return <Fragment key={p.id}><tr><td>{p.product_code}</td><td>{p.product_name}</td><td>{salesMasters.gases.find(g=>g.id===p.gas_type_id)?.name??"—"}</td><td>{p.unit}</td><td><button type="button" className="salesRuleDetailToggle" aria-expanded={expanded} aria-controls={`sales-master-details-${p.id}`} onClick={()=>setExpandedSalesMasterId(current=>current===p.id?null:p.id)}>{matchedPrices.length}件 <span aria-hidden="true">{expanded?"▲":"▼"}</span><span className="salesRuleToggleLabel">{expanded?"詳細を閉じる":"詳細を見る"}</span></button></td></tr>
+  {expanded&&<tr className="salesRuleDetailRow"><td colSpan={5}><div id={`sales-master-details-${p.id}`} className="salesRuleDetailPanel">
+  <h4>単価ルール詳細（{matchedPrices.length}件）</h4>
+  {matchedPrices.length?<div className="tableWrap"><table className="legacyTable salesRuleNestedTable"><thead><tr><th>区分</th><th>対象取引先</th><th>容器保有者</th><th>単価</th><th>適用開始日</th><th>適用終了日</th></tr></thead><tbody>{matchedPrices.map(rule=><tr key={rule.id}><td>{rule.price_kind==="sale"?"販売単価":"仕入単価"}</td><td>{rule.price_kind==="sale"?(salesMasters.customers.find(c=>c.id===rule.customer_id)?.name??"未設定"):(salesMasters.suppliers.find(v=>v.id===rule.supplier_id)?.name??"未設定")}</td><td>{rule.owner_id?(salesMasters.owners.find(o=>o.id===rule.owner_id)?.name??"未設定"):"指定なし"}</td><td>{Number(rule.unit_price).toLocaleString("ja-JP")}円／{p.unit}</td><td>{rule.effective_from}</td><td>{rule.effective_until??"無期限"}</td></tr>)}</tbody></table></div>:<p>登録されている単価ルールはありません。</p>}
+  <h4>得意先別の数量換算ルール（{matchedQuantities.length}件）</h4>
+  {matchedQuantities.length?<div className="tableWrap"><table className="legacyTable salesRuleNestedTable"><thead><tr><th>得意先</th><th>1本あたりの請求数量</th><th>適用開始日</th><th>適用終了日</th></tr></thead><tbody>{matchedQuantities.map(rule=><tr key={rule.id}><td>{salesMasters.customers.find(c=>c.id===rule.customer_id)?.name??"未設定"}</td><td>{Number(rule.quantity_per_container).toLocaleString("ja-JP")} {rule.billing_unit}／本</td><td>{rule.effective_from}</td><td>{rule.effective_until??"無期限"}</td></tr>)}</tbody></table></div>:<p>登録されている数量換算ルールはありません。</p>}
+  <p className="instruction">登録済みのマスタデータを表示しています。適用条件・単価は登録内容をご確認ください。</p>
+  </div></td></tr>}</Fragment>;
+}):<tr><td colSpan={5}>商品マスタはまだありません。</td></tr>}</tbody></table></div></div>
 </>}</section></>}
     {page === "monthly" && <><Breadcrumb items={["請求・月次", "月次処理・帳票"]} /><h1>月次処理・帳票</h1>
       <section className="legacyPanel"><h2>月次業務の対象年月</h2><div className="monthlyControls"><label>対象年月<select value={monthlyMonth} onChange={event => { setMonthlyMonth(event.target.value); setMonthlyReport(null); setMonthlyError(""); }}>{billingMonthOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" className="actionButton" disabled={monthlyLoading} onClick={() => void loadMonthlyReport()}>{monthlyLoading ? "読み込み中…" : "月次データを表示"}</button></div>{monthlyError && <p className="monthlyError" role="alert">{monthlyError}</p>}</section>
