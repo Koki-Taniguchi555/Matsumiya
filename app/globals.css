@@ -150,3 +150,8 @@ input::placeholder{color:transparent}
 .salesSuggestion button{margin-top:9px}
 .salesCandidatePanel .salesEditPanel>.actionButton{margin-top:15px}
 .salesCandidatePanel .salesGroupSection{margin-top:20px}
+
+/* Customer billing unit and actual-fill override */
+.salesEditGrid select,.salesEditGrid textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid #b5cadb;border-radius:5px;background:#fff;color:#20394d;font:inherit}
+.salesEditGrid .salesQuantityReason{grid-column:1/-1}
+.salesEditGrid .salesQuantityReason textarea{min-height:72px}
