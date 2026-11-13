@@ -16,8 +16,12 @@ type MonthlyReport = { month: string; snapshotNote: string; inventoryTotal: numb
 type ReconciliationBatch = { id: string; source_filename: string; created_at: string; total_rows: number; applied_rows: number; error_rows: number; status: string };
 type ReconciliationRow = { id: number; lineNumber: number; action: string | null; barcode: string | null; serialNumber: string; occurredOn: string | null; status: string; customer: string; supplier: string; branch: string; referenceNumber: string; gasName: string; capacity: string; capacityUnit: string; error: string | null; issues: string[]; decision: "matched" | "hold" | "unreviewed"; note: string; checkedAt: string | null };
 type ReconciliationResult = { batch: ReconciliationBatch; rows: ReconciliationRow[]; finalized: { finalized_at: string; finalized_by: string; note: string } | null; summary: { applied: number; errors: number; matched: number; held: number; unreviewed: number } };
+type SalesBatch = { id:string; source_filename?:string; created_at?:string; total_rows?:number; finalizedAt:string };
+type SalesCandidate = { id:number;lineNumber:number;deliveredOn:string;referenceNumber:string;customer:string;branch:string;serialNumber:string;gasName:string;quantity:number;unit:string;productCode:string;productName:string;supplier:string;saleUnitPrice:number|null;purchaseUnitPrice:number|null;note:string;confirmed:boolean;confirmedAt:string|null };
+type SalesResult = {batch:{id:string;source_filename:string};candidates:SalesCandidate[];summary:{total:number;confirmed:number;pending:number;totalSalesYen:number}};
+type SalesDraft = {productCode:string;productName:string;supplier:string;quantity:string;unit:string;saleUnitPrice:string;purchaseUnitPrice:string;note:string};
 type ImportOutcome = { lineNumber: number; barcode: string; occurredOn: string; action: string; status: string; error: string | null; warnings?: string[] };
-type Page = "home" | "ledger" | "history" | "daily" | "handheld" | "inspection" | "billing" | "monthly" | "masters";
+type Page = "home" | "ledger" | "history" | "daily" | "handheld" | "inspection" | "billing" | "monthly" | "sales" | "masters";
 type MasterKind = "branch" | "customer" | "supplier" | "owner" | "gas" | "inspection" | "container";
 
 const emptyMasters: Masters = { branches: [], customers: [], suppliers: [], owners: [], gases: [], inspections: [] };
@@ -27,7 +31,7 @@ const masterLabels: Record<MasterKind, string> = { branch: "営業所", customer
 const menus: { heading: string; items: [Page, string][] }[] = [
   { heading: "日常業務", items: [["daily", "容器移動入力"], ["handheld", "ハンディ取り込み"]] },
   { heading: "照会", items: [["ledger", "容器台帳照会"], ["history", "容器移動履歴照会"], ["inspection", "検査・保全照会"]] },
-  { heading: "請求・月次", items: [["billing", "使用料計算"], ["monthly", "月次処理・帳票"]] },
+  { heading: "請求・月次", items: [["billing", "使用料計算"], ["monthly", "月次処理・帳票"], ["sales", "売上候補確認"]] },
   { heading: "マスタ・設定", items: [["masters", "マスタ一覧"]] }
 ];
 
@@ -52,6 +56,13 @@ export default function Home() {
   const [slipChecked, setSlipChecked] = useState<Record<number, boolean>>({});
   const [reconciliationBusy, setReconciliationBusy] = useState(false);
   const [reconciliationMessage, setReconciliationMessage] = useState("");
+  const [salesBatches, setSalesBatches] = useState<SalesBatch[]>([]);
+  const [salesImportId, setSalesImportId] = useState("");
+  const [salesResult, setSalesResult] = useState<SalesResult | null>(null);
+  const [salesDraftId, setSalesDraftId] = useState<number | null>(null);
+  const [salesDraft, setSalesDraft] = useState<SalesDraft>({productCode:"",productName:"",supplier:"",quantity:"1",unit:"本",saleUnitPrice:"",purchaseUnitPrice:"",note:""});
+  const [salesBusy, setSalesBusy] = useState(false);
+  const [salesMessage, setSalesMessage] = useState("");
   const [historyContainerId, setHistoryContainerId] = useState("");
   const [historyCustomerId, setHistoryCustomerId] = useState("");
   const [historySupplierId, setHistorySupplierId] = useState("");
@@ -273,6 +284,81 @@ export default function Home() {
     element.href = url; element.download = "matsumiya_reconciled_deliveries_" + reconciliationResult.batch.id.slice(0, 8) + ".csv";
     element.click(); URL.revokeObjectURL(url);
   }
+  async function fetchSalesBatches() {
+    setSalesBusy(true);setSalesMessage("");
+    try {
+      const response=await fetch("/api/sales-candidates");
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error??"照合確定済みの履歴を取得できませんでした。");
+      setSalesBatches(result.batches??[]);
+    }catch(error){setSalesMessage(error instanceof Error?error.message:"取得できませんでした。");}
+    finally{setSalesBusy(false);}
+  }
+  async function fetchSalesCandidates(importId:string) {
+    setSalesImportId(importId);setSalesResult(null);setSalesDraftId(null);setSalesMessage("");
+    if(!importId)return;
+    setSalesBusy(true);
+    try{
+      const response=await fetch(`/api/sales-candidates?importId=${encodeURIComponent(importId)}`);
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error??"売上候補を取得できませんでした。");
+      setSalesResult(result as SalesResult);
+    }catch(error){setSalesMessage(error instanceof Error?error.message:"取得できませんでした。");}
+    finally{setSalesBusy(false);}
+  }
+  function editSalesCandidate(item:SalesCandidate) {
+    setSalesDraftId(item.id);setSalesMessage("");
+    setSalesDraft({
+      productCode:item.productCode,productName:item.productName,supplier:item.supplier,
+      quantity:String(item.quantity),unit:item.unit,saleUnitPrice:item.saleUnitPrice===null?"":String(item.saleUnitPrice),
+      purchaseUnitPrice:item.purchaseUnitPrice===null?"":String(item.purchaseUnitPrice),note:item.note
+    });
+  }
+  async function confirmSalesCandidate() {
+    if(!salesResult||salesDraftId===null)return;
+    setSalesBusy(true);setSalesMessage("");
+    try{
+      const response=await fetch("/api/sales-candidates",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({importId:salesResult.batch.id,rowId:salesDraftId,
+          productCode:salesDraft.productCode,productName:salesDraft.productName,supplier:salesDraft.supplier,
+          quantity:salesDraft.quantity===""?null:Number(salesDraft.quantity),unit:salesDraft.unit,
+          saleUnitPrice:salesDraft.saleUnitPrice===""?null:Number(salesDraft.saleUnitPrice),
+          purchaseUnitPrice:salesDraft.purchaseUnitPrice===""?null:Number(salesDraft.purchaseUnitPrice),
+          note:salesDraft.note})
+      });
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error??"候補を保存できませんでした。");
+      setSalesResult(result.result as SalesResult);setSalesDraftId(null);
+      setSalesMessage("商品・単価を確認済みとして保存しました。実際の売上計上は行っていません。");
+    }catch(error){setSalesMessage(error instanceof Error?error.message:"候補を保存できませんでした。");}
+    finally{setSalesBusy(false);}
+  }
+  async function exportSalesCandidates() {
+    if(!salesResult||salesResult.summary.pending>0)return;
+    setSalesBusy(true);setSalesMessage("");
+    try{
+      const response=await fetch(`/api/sales-candidates?importId=${encodeURIComponent(salesResult.batch.id)}&format=csv`,{cache:"no-store"});
+      if(!response.ok){const result=await response.json();throw new Error(result.error??"CSVを出力できませんでした。");}
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement("a");link.href=url;link.download=`sales_candidates_${salesResult.batch.id.slice(0,8)}.csv`;
+      link.click();URL.revokeObjectURL(url);
+      setSalesMessage("確認済み売上候補CSVを出力しました。販売管理への取込・売上計上は未実施です。");
+    }catch(error){setSalesMessage(error instanceof Error?error.message:"CSV出力に失敗しました。");}
+    finally{setSalesBusy(false);}
+  }
+  const salesGroupTotals=useMemo(()=>{
+    const map=new Map<string,{customer:string;productCode:string;productName:string;unit:string;quantity:number;total:number;count:number}>();
+    for(const row of salesResult?.candidates??[]){
+      if(!row.confirmed||row.saleUnitPrice===null)continue;
+      const key=JSON.stringify([row.customer,row.productCode,row.unit,row.saleUnitPrice]);
+      const item=map.get(key)??{customer:row.customer,productCode:row.productCode,productName:row.productName,unit:row.unit,quantity:0,total:0,count:0};
+      item.quantity+=row.quantity;item.total+=Math.round(row.quantity*row.saleUnitPrice*100)/100;item.count++;
+      map.set(key,item);
+    }
+    return [...map.values()].sort((a,b)=>a.customer.localeCompare(b.customer,"ja")||a.productCode.localeCompare(b.productCode,"ja"));
+  },[salesResult]);
   async function submitCsv(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -330,6 +416,27 @@ export default function Home() {
     {page === "inspection" && <><Breadcrumb items={["照会", "検査・保全"]} /><h1>検査・保全・棚卸管理</h1><div className="twoColumns"><section className="legacyPanel"><h2>耐圧検査 依頼・完了登録</h2><p className="instruction">依頼・完了は履歴として保存され、容器台帳の検査情報も更新します。</p><form className="legacyForm" onSubmit={submitOperation}><input type="hidden" name="action" value="inspection" /><label>容器<input name="containerId" list="container-options" required /></label><label>処理<select name="mode"><option value="sent">検査へ依頼</option><option value="completed">検査完了</option></select></label><label>検査日<input name="occurredOn" type="date" required /></label><label>検査先<input name="providerId" list="inspection-options" required /></label><label>次回期限（完了時）<input name="nextDueMonth" type="month" /></label><label>合格（完了時）<select name="passed"><option value="true">合格</option><option value="false">不合格</option></select></label><label className="wide">備考<input name="note" /></label><button className="actionButton">検査情報を登録</button></form></section><section className="legacyPanel"><h2>営業所 棚卸</h2><p className="instruction">営業所と棚卸日を指定して開始後、瓶号・バーコードを選択して読取登録します。</p><form className="legacyForm" onSubmit={submitOperation}><input type="hidden" name="action" value="startInventory" /><label>営業所<input name="branchId" list="branch-options" required /></label><label>棚卸日<input name="countedOn" type="date" required /></label><button className="actionButton">棚卸を開始</button></form>{inventorySessionId&&<form className="legacyForm" onSubmit={submitOperation}><input type="hidden" name="action" value="scanInventory" /><input type="hidden" name="sessionId" value={inventorySessionId}/><label>読取容器<input name="containerId" list="container-options" required /></label><button className="actionButton">読取登録</button></form>}<div className="workList"><WorkItem title="耐圧検査期限対象" detail="期限が入力済みの容器" count={`${inspectionDue} 本`} /><WorkItem title="棚卸状態" detail={inventorySessionId?"棚卸実施中。読取後に一覧で差異確認できます。":"棚卸日を指定して開始してください。"} count={inventorySessionId?"実施中":"未開始"} /></div></section></div></>}
     {page === "billing" && <><Breadcrumb items={["請求・月次", "使用料計算"]} /><h1>容器使用料計算</h1><section className="legacyPanel filters"><h2>対象月</h2><p className="instruction">93日間無料、94日目から31日あたり600円を日割り・月次切り捨てで計算します。回収日を含めて計算し、確定済みの再計算はできません。</p><label>対象年月<select className="billingMonthSelect" value={billingMonth} onChange={(event) => { setBillingMonth(event.target.value); setBillingResult(null); }}><option value="">対象年月を選択</option>{billingMonthOptions.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}</select></label><div><button className="actionButton" onClick={() => void loadBilling()} disabled={billingLoading}>使用料一覧を表示</button></div></section>{billingResult && <><div className="summaryGrid"><Summary label="対象貸出" value={`${billingResult.summary.count} 件`} detail="対象月に重なる貸出" /><Summary label="未確定" value={`${billingResult.summary.pending} 件`} detail="一括確定の対象" /><Summary label="確定済" value={`${billingResult.summary.calculated} 件`} detail="再計算不可" /><Summary label="使用料合計" value={`${billingResult.summary.amountYen.toLocaleString()} 円`} detail="確定済・未確定を含む" /></div><section className="legacyPanel"><div className="panelTitle"><h2>{billingResult.billingMonth.slice(0, 7)} 使用料明細</h2><span><button className="subtleButton" onClick={downloadBillingCsv}>CSV出力</button><button className="actionButton" onClick={() => void confirmBilling()} disabled={billingLoading || !billingResult.summary.pending}>未確定を一括確定</button></span></div><div className="tableWrap"><table className="legacyTable"><thead><tr><th>得意先</th><th>瓶号</th><th>納品日</th><th>回収日</th><th>課金日数</th><th>使用料</th><th>状態</th></tr></thead><tbody>{billingResult.items.length === 0 ? <tr><td colSpan={7}>この月の対象貸出はありません。</td></tr> : billingResult.items.map((item) => <tr key={item.loanId}><td>{item.customerName}</td><td><b>{item.containerSerialNumber}</b><small>{item.managementNumber || "－"}</small></td><td>{item.deliveredOn}</td><td>{item.recoveredOn || "貸出中"}</td><td>{item.billableDays} 日</td><td>{item.amountYen.toLocaleString()} 円</td><td><span className={`status ${item.calculated ? "recovered" : "on_loan"}`}>{item.calculated ? "確定済" : "未確定"}</span></td></tr>)}</tbody></table></div></section></>}</>}
     {page === "billing" && billingResult && <section className="legacyPanel demoPanel"><div className="panelTitle"><h2>請求・販売管理連携デモ</h2><span className="demoBadge">DEMO（外部連携は実行しません）</span></div><p className="instruction">明細を基に、得意先別の請求書プレビューと販売管理システムへ渡す形式のCSVを確認できます。</p><div className="demoActions"><button className="subtleButton" onClick={() => setShowInvoiceDemo((visible) => !visible)}>{showInvoiceDemo ? "請求書プレビューを閉じる" : "請求書プレビューを表示"}</button><button className="subtleButton" onClick={downloadSalesIntegrationDemo}>販売管理連携CSV（デモ）</button></div>{showInvoiceDemo && <div className="invoicePreview"><label className="invoiceCustomerPicker">請求先（取引先）<select value={invoiceCustomerId || billingCustomers[0]?.customerId || ""} onChange={(event) => setInvoiceCustomerId(event.target.value)}><option value="" disabled>取引先を選択</option>{billingCustomers.map((customer) => <option key={customer.customerId} value={customer.customerId}>{customer.customerName}</option>)}</select></label>{billingCustomers.length === 0 ? <p className="instruction">この対象月に請求対象の取引先はありません。</p> : billingCustomers.filter((customer) => customer.customerId === (invoiceCustomerId || billingCustomers[0]?.customerId)).map((customer) => <div key={customer.customerId}><div className="invoiceHeader"><span>松宮工材株式会社</span><b>容器使用料 ご請求書（デモ）</b><span>{billingResult.billingMonth.slice(0, 7)} 対象</span></div><div className="invoiceRecipient"><b>{customer.customerName} 御中</b><span>対象容器：{customer.count}本 ／ {customer.confirmed === customer.count ? "全件確定済" : `未確定を含む（${customer.confirmed}/${customer.count}件確定）`}</span></div><div className="tableWrap"><table className="legacyTable invoiceItemsTable"><thead><tr><th>瓶号</th><th>納品日</th><th>回収日</th><th>課金日数</th><th>使用料金</th><th>状態</th></tr></thead><tbody>{billingResult.items.filter((item) => item.customerId === customer.customerId).map((item) => <tr key={item.loanId}><td>{item.containerSerialNumber}</td><td>{item.deliveredOn}</td><td>{item.recoveredOn || "貸出中"}</td><td>{item.billableDays}日</td><td>{item.amountYen.toLocaleString()}円</td><td>{item.calculated ? "確定済" : "未確定"}</td></tr>)}<tr className="invoiceTotal"><td colSpan={4}>ご請求金額（{customer.customerName}）</td><td>{customer.amountYen.toLocaleString()}円</td><td>デモ</td></tr></tbody></table></div></div>)}<small>※ 取引先ごとに独立した請求書プレビューです。請求書の発行・送付、外部販売管理システムへの登録は行いません。金額は使用料明細から算出した税処理前のデモ金額です。</small></div>}</section>}
+    {page === "sales" && <><Breadcrumb items={["請求・月次","売上候補確認"]}/><h1>売上候補確認・販売管理連携CSV</h1>
+<section className="legacyPanel salesCandidatePanel"><div className="panelTitle"><h2>伝票照合済み出荷から売上候補を作成</h2><button type="button" className="subtleButton" onClick={()=>void fetchSalesBatches()} disabled={salesBusy}>確定済み取込を読み込む</button></div>
+<p className="instruction">伝票照合を確定した取込の「照合済み・出荷」の明細だけが対象です。容器番号・納品先・ガス種を引き継ぎ、商品コード、仕入先、売上・仕入単価、数量・単位を担当者が入力して確認します。売上の自動計上は行いません。</p>
+{salesBatches.length>0 && <label className="salesBatchSelect">対象の取込履歴<select value={salesImportId} onChange={event=>void fetchSalesCandidates(event.target.value)}><option value="">取込履歴を選択</option>{salesBatches.map(batch=><option key={batch.id} value={batch.id}>{new Date(batch.finalizedAt).toLocaleString("ja-JP")} 確定 ／ {batch.source_filename??batch.id}</option>)}</select></label>}
+{salesMessage && <p className="reconciliationMessage" role="status">{salesMessage}</p>}
+{salesResult && <><div className="reconciliationCounts"><span>出荷候補 {salesResult.summary.total}件</span><span>確認済み {salesResult.summary.confirmed}件</span><span>未確認 {salesResult.summary.pending}件</span><span>確認済み売上合計 {salesResult.summary.totalSalesYen.toLocaleString("ja-JP")}円（税抜・仮）</span></div>
+<div className="tableWrap"><table className="legacyTable salesCandidateTable"><thead><tr><th>伝票／出荷日</th><th>得意先</th><th>瓶号・ガス</th><th>商品コード・商品名</th><th>仕入先</th><th>数量・単位</th><th>売上単価／仕入単価</th><th>確認</th></tr></thead><tbody>{salesResult.candidates.length===0?<tr><td colSpan={8}>この取込に、照合済みの出荷明細はありません。</td></tr>:salesResult.candidates.map(row=><tr key={row.id}><td>{row.referenceNumber||"—"}<small>{row.deliveredOn}</small></td><td>{row.customer||"未設定"}</td><td>{row.serialNumber}<small>{row.gasName||"未設定"}</small></td><td>{row.productCode||"未設定"}<small>{row.productName||"未設定"}</small></td><td>{row.supplier||"未設定"}</td><td>{row.quantity} {row.unit}</td><td>{row.saleUnitPrice===null?"未設定":row.saleUnitPrice.toLocaleString("ja-JP")+"円"}<small>仕入：{row.purchaseUnitPrice===null?"未設定":row.purchaseUnitPrice.toLocaleString("ja-JP")+"円"}</small></td><td><text>{row.confirmed?"確認済み":"要確認"}</text><button type="button" className="subtleButton" onClick={()=>editSalesCandidate(row)}>{row.confirmed?"再確認":"入力・確認"}</button></td></tr>)}</tbody></table></div>
+{salesDraftId!==null && <section className="salesEditPanel"><h3>売上候補の入力・確認（明細ID {salesDraftId}）</h3><div className="salesEditGrid">
+<label>商品コード<input value={salesDraft.productCode} onChange={e=>setSalesDraft(v=>({...v,productCode:e.target.value}))}/></label>
+<label>商品名<input value={salesDraft.productName} onChange={e=>setSalesDraft(v=>({...v,productName:e.target.value}))}/></label>
+<label>仕入先<input value={salesDraft.supplier} onChange={e=>setSalesDraft(v=>({...v,supplier:e.target.value}))}/></label>
+<label>数量<input type="number" min="0.001" step="0.001" value={salesDraft.quantity} onChange={e=>setSalesDraft(v=>({...v,quantity:e.target.value}))}/></label>
+<label>単位<input value={salesDraft.unit} onChange={e=>setSalesDraft(v=>({...v,unit:e.target.value}))}/></label>
+<label>売上単価（円／単位）<input type="number" min="0" step="0.01" value={salesDraft.saleUnitPrice} onChange={e=>setSalesDraft(v=>({...v,saleUnitPrice:e.target.value}))}/></label>
+<label>仕入単価（円／単位）<input type="number" min="0" step="0.01" value={salesDraft.purchaseUnitPrice} onChange={e=>setSalesDraft(v=>({...v,purchaseUnitPrice:e.target.value}))}/></label>
+<label>確認メモ<input value={salesDraft.note} onChange={e=>setSalesDraft(v=>({...v,note:e.target.value}))}/></label></div>
+<p className="instruction">数量の初期値「1本」は出荷容器1本を表します。㎥・kgなどの換算は自動設定されないため、担当者が数量・単位を確認してください。売上・仕入単価も自動推定しません。</p>
+<div className="reconciliationFooter"><button type="button" className="actionButton" disabled={salesBusy} onClick={()=>void confirmSalesCandidate()}>内容を確認して保存</button><button type="button" className="subtleButton" onClick={()=>setSalesDraftId(null)}>キャンセル</button></div></section>}
+{salesGroupTotals.length>0 && <section className="salesGroupSection"><h3>取引先・商品別の確認済み集計</h3><div className="tableWrap"><table className="legacyTable"><thead><tr><th>得意先</th><th>商品コード</th><th>商品名</th><th>確認行数</th><th>数量</th><th>売上金額（税抜・仮）</th></tr></thead><tbody>{salesGroupTotals.map((item,index)=><tr key={index}><td>{item.customer}</td><td>{item.productCode}</td><td>{item.productName}</td><td>{item.count}行</td><td>{item.quantity} {item.unit}</td><td>{item.total.toLocaleString("ja-JP")}円</td></tr>)}</tbody></table></div></section>}
+<div className="reconciliationFooter"><button type="button" className="actionButton" disabled={salesBusy||!salesResult.summary.total||!!salesResult.summary.pending} onClick={()=>void exportSalesCandidates()}>全明細確認済みの売上候補CSVを出力</button></div>
+<p className="instruction">CSV出力は販売管理への正式な送信ではありません。実際の販売管理システムへの取込形式・売上計上仕様は別途確認が必要です。エラー・回収・保留・未照合の明細は候補に含まれません。</p></>}</section></>}
     {page === "monthly" && <><Breadcrumb items={["請求・月次", "月次処理・帳票"]} /><h1>月次処理・帳票</h1>
       <section className="legacyPanel"><h2>月次業務の対象年月</h2><div className="monthlyControls"><label>対象年月<select value={monthlyMonth} onChange={event => { setMonthlyMonth(event.target.value); setMonthlyReport(null); setMonthlyError(""); }}>{billingMonthOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" className="actionButton" disabled={monthlyLoading} onClick={() => void loadMonthlyReport()}>{monthlyLoading ? "読み込み中…" : "月次データを表示"}</button></div>{monthlyError && <p className="monthlyError" role="alert">{monthlyError}</p>}</section>
       <section className="legacyPanel"><h2>月次業務メニュー</h2><div className="monthlyTabs">{([["inventory", "保有者別在庫"], ["inspection", "耐圧期限アラート"], ["stocktake", "容器棚卸"], ["sales", "販売管理連携"]] as const).map(([tab, label]) => <button type="button" key={tab} className={monthlyTab === tab ? "selected" : ""} onClick={() => setMonthlyTab(tab)}>{label}</button>)}</div>
