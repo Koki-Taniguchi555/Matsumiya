@@ -167,3 +167,14 @@ input::placeholder{color:transparent}
 .salesRuleNestedTable{min-width:640px;background:#fff}
 .salesRuleDetailPanel .instruction{margin-top:14px}
 @media(max-width:640px){.salesRuleDetailPanel{padding:12px}.salesRuleDetailToggle{padding:6px 8px}.salesRuleToggleLabel{font-size:11px}}
+
+/* Whole-app feedback for loading, saving and other network operations */
+.networkActivityIndicator{position:fixed;top:12px;right:16px;z-index:9999;min-height:40px;max-width:min(460px,calc(100vw - 32px));display:flex;align-items:center;gap:10px;padding:10px 14px 12px;border:1px solid #c6d8e7;border-radius:8px;box-shadow:0 5px 24px rgba(22,53,80,.14);background:#fff;color:#264865;font-size:13px;font-weight:700;overflow:hidden;pointer-events:none}
+.networkActivitySpinner,.networkButtonSpinner{display:inline-block;flex:none;width:15px;height:15px;border:2px solid #c6d9e8;border-top-color:#28628f;border-radius:50%;animation:networkSpin .7s linear infinite}
+.networkButtonSpinner{width:12px;height:12px;border-width:2px;margin-inline-start:7px;vertical-align:middle;border-top-color:currentColor}
+.networkButtonBusy{cursor:progress!important;opacity:.76}
+.networkActivityProgress{position:absolute;bottom:0;left:0;height:3px;width:38%;background:#337aa7;animation:networkProgress 1.25s ease-in-out infinite alternate}
+@keyframes networkSpin{to{transform:rotate(360deg)}}
+@keyframes networkProgress{from{left:0}to{left:62%}}
+@media(max-width:640px){.networkActivityIndicator{top:8px;right:8px;left:8px;max-width:none}}
+@media(prefers-reduced-motion:reduce){.networkActivitySpinner,.networkButtonSpinner,.networkActivityProgress{animation-duration:1.8s}}
