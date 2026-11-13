@@ -48,11 +48,11 @@ export async function POST(request: NextRequest) {
       if(!code||code.length>80||!name||name.length>200||unit.length>30)throw new Error("商品コード・商品名・単位を確認してください。");
       const gas=await db.from("gas_types").select("id").eq("id",body.gasTypeId).maybeSingle();
       if(gas.error||!gas.data)throw new Error("指定されたガス種が存在しません。");
-      const existing=await db.from("sales_product_mappings").select("id").eq("gas_type_id",body.gasTypeId)
+      const existing=await db.from("sales_product_mappings").select("id,supplier_id,owner_id").eq("gas_type_id",body.gasTypeId)
         .eq("product_code",code);
       if(existing.error)throw new Error(existing.error.message);
-      const duplicate=(existing.data??[]).length>0;
-      if(duplicate)throw new Error("同じガス種・商品コードは登録済みです。");
+      const duplicate=(existing.data??[]).some(row=>row.supplier_id===(body.supplierId||null)&&row.owner_id===(body.ownerId||null));
+      if(duplicate)throw new Error("同じガス種・仕入先・保有者の商品コードは登録済みです。");
       const result=await db.from("sales_product_mappings").insert({
         gas_type_id:body.gasTypeId,supplier_id:body.supplierId||null,owner_id:body.ownerId||null,
         product_code:code,product_name:name,unit,created_by:auth.user.id
