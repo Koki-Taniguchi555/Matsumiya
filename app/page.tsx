@@ -17,7 +17,7 @@ type ReconciliationBatch = { id: string; source_filename: string; created_at: st
 type ReconciliationRow = { id: number; lineNumber: number; action: string | null; barcode: string | null; serialNumber: string; occurredOn: string | null; status: string; customer: string; supplier: string; branch: string; referenceNumber: string; gasName: string; capacity: string; capacityUnit: string; error: string | null; issues: string[]; decision: "matched" | "hold" | "unreviewed"; note: string; checkedAt: string | null };
 type ReconciliationResult = { batch: ReconciliationBatch; rows: ReconciliationRow[]; finalized: { finalized_at: string; finalized_by: string; note: string } | null; summary: { applied: number; errors: number; matched: number; held: number; unreviewed: number } };
 type SalesBatch = { id:string; source_filename?:string; created_at?:string; total_rows?:number; finalizedAt:string };
-type SalesCandidate = { id:number;lineNumber:number;deliveredOn:string;referenceNumber:string;customer:string;branch:string;serialNumber:string;gasName:string;quantity:number;unit:string;productCode:string;productName:string;supplier:string;saleUnitPrice:number|null;purchaseUnitPrice:number|null;note:string;confirmed:boolean;confirmedAt:string|null;suggestion:SalesSuggestion|null };
+type SalesCandidate = { id:number;lineNumber:number;deliveredOn:string;referenceNumber:string;customer:string;branch:string;serialNumber:string;gasName:string;quantity:number;unit:string;productCode:string;productName:string;supplier:string;saleUnitPrice:number|null;purchaseUnitPrice:number|null;note:string;confirmed:boolean;confirmedAt:string|null;suggestion:SalesSuggestion|null; quantitySuggestion:{ruleId:string;quantity:number;unit:string;explanation:string}|null;quantitySource:"rule"|"actual_fill"|"manual";quantityReason:string;quantityRuleId:string|null };
 type SalesResult = {batch:{id:string;source_filename:string};candidates:SalesCandidate[];summary:{total:number;confirmed:number;pending:number;totalSalesYen:number}};
 type SalesSuggestion = {productCode:string;productName:string;supplier:string;unit:string;saleUnitPrice:number|null;purchaseUnitPrice:number|null;source:string;warnings:string[]};
 type SalesMasters = {
@@ -27,8 +27,9 @@ type SalesMasters = {
  owners:{id:string;code:string;name:string}[];
  products:{id:string;gas_type_id:string;supplier_id:string|null;owner_id:string|null;product_code:string;product_name:string;unit:string}[];
  prices:{id:string;product_mapping_id:string;price_kind:"sale"|"purchase";customer_id:string|null;supplier_id:string|null;owner_id:string|null;unit_price:number;effective_from:string;effective_until:string|null}[];
+ quantities:{id:string;customer_id:string;product_mapping_id:string;billing_unit:string;quantity_per_container:number;effective_from:string;effective_until:string|null}[];
 };
-type SalesDraft = {productCode:string;productName:string;supplier:string;quantity:string;unit:string;saleUnitPrice:string;purchaseUnitPrice:string;note:string};
+type SalesDraft = {productCode:string;productName:string;supplier:string;quantity:string;unit:string;saleUnitPrice:string;purchaseUnitPrice:string;note:string;quantitySource:"rule"|"actual_fill"|"manual";quantityReason:string;quantityRuleId:string|null};
 type ImportOutcome = { lineNumber: number; barcode: string; occurredOn: string; action: string; status: string; error: string | null; warnings?: string[] };
 type Page = "home" | "ledger" | "history" | "daily" | "handheld" | "inspection" | "billing" | "monthly" | "sales" | "masters";
 type MasterKind = "branch" | "customer" | "supplier" | "owner" | "gas" | "inspection" | "container";
@@ -69,11 +70,12 @@ export default function Home() {
   const [salesImportId, setSalesImportId] = useState("");
   const [salesResult, setSalesResult] = useState<SalesResult | null>(null);
   const [salesDraftId, setSalesDraftId] = useState<number | null>(null);
-  const [salesDraft, setSalesDraft] = useState<SalesDraft>({productCode:"",productName:"",supplier:"",quantity:"1",unit:"本",saleUnitPrice:"",purchaseUnitPrice:"",note:""});
+  const [salesDraft, setSalesDraft] = useState<SalesDraft>({productCode:"",productName:"",supplier:"",quantity:"1",unit:"本",saleUnitPrice:"",purchaseUnitPrice:"",note:"",quantitySource:"manual",quantityReason:"",quantityRuleId:null});
   const [salesMasters, setSalesMasters] = useState<SalesMasters|null>(null);
-  const [salesMasterTab, setSalesMasterTab] = useState<"product"|"price">("product");
+  const [salesMasterTab, setSalesMasterTab] = useState<"product"|"price"|"quantity">("product");
   const [productMasterForm, setProductMasterForm] = useState({gas:"",supplier:"",owner:"",code:"",name:"",unit:"本"});
   const [priceMasterForm, setPriceMasterForm] = useState({product:"",kind:"sale" as "sale"|"purchase",customer:"",supplier:"",owner:"",price:"",from:"",until:""});
+  const [quantityMasterForm, setQuantityMasterForm] = useState({customer:"",product:"",unit:"",perContainer:"",from:"",until:""});
   const [salesMasterMessage, setSalesMasterMessage] = useState("");
   const [salesPriceHistory, setSalesPriceHistory] = useState<{date:string;quantity:number;unit:string;salePrice:number;purchasePrice:number;reviewedAt:string}[]>([]);
   const [salesPriceHistoryNote, setSalesPriceHistoryNote] = useState("");
@@ -314,7 +316,12 @@ export default function Home() {
     if(!salesMasters)return;
     setSalesBusy(true);setSalesMasterMessage("");
     try{
-      const body=salesMasterTab==="product"?{
+      const body=salesMasterTab==="quantity"?{
+        kind:"quantity",customerId:matchMaster(salesMasters.customers,quantityMasterForm.customer),
+        productMappingId:salesMasters.products.find(p=>`${p.product_code} — ${p.product_name}`===quantityMasterForm.product)?.id??null,
+        billingUnit:quantityMasterForm.unit,quantityPerContainer:quantityMasterForm.perContainer===""?null:Number(quantityMasterForm.perContainer),
+        effectiveFrom:quantityMasterForm.from,effectiveUntil:quantityMasterForm.until||null
+      }:salesMasterTab==="product"?{
         kind:"product",gasTypeId:matchMaster(salesMasters.gases,productMasterForm.gas),
         supplierId:productMasterForm.supplier?matchMaster(salesMasters.suppliers,productMasterForm.supplier):null,
         ownerId:productMasterForm.owner?matchMaster(salesMasters.owners,productMasterForm.owner):null,
@@ -328,6 +335,7 @@ export default function Home() {
         unitPrice:priceMasterForm.price===""?null:Number(priceMasterForm.price),
         effectiveFrom:priceMasterForm.from,effectiveUntil:priceMasterForm.until||null
       };
+      if(salesMasterTab==="quantity"&&(!body.customerId||!body.productMappingId))throw new Error("得意先と商品を候補から正しく選択してください。");
       if(salesMasterTab==="product"&&(!body.gasTypeId||(productMasterForm.supplier&&!body.supplierId)||(productMasterForm.owner&&!body.ownerId)))throw new Error("ガス種・仕入先・保有者を候補から正しく選んでください。");
       if(salesMasterTab==="price"&&(!body.productMappingId||(priceMasterForm.kind==="sale"&&!body.customerId)||(priceMasterForm.kind==="purchase"&&!body.supplierId)||(priceMasterForm.owner&&!body.ownerId)))throw new Error("商品・取引先・仕入先・保有者を候補から正しく選んでください。");
       const response=await fetch("/api/sales-masters",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
@@ -336,7 +344,8 @@ export default function Home() {
       await fetchSalesMasters();
       if(salesImportId)await fetchSalesCandidates(salesImportId);
       setSalesMasterMessage("マスタを登録しました。候補の単価を適用する前に内容を確認してください。");
-      if(salesMasterTab==="product")setProductMasterForm({gas:"",supplier:"",owner:"",code:"",name:"",unit:"本"});
+      if(salesMasterTab==="quantity")setQuantityMasterForm({customer:"",product:"",unit:"",perContainer:"",from:"",until:""});
+      else if(salesMasterTab==="product")setProductMasterForm({gas:"",supplier:"",owner:"",code:"",name:"",unit:"本"});
       else setPriceMasterForm(current=>({...current,price:"",from:"",until:""}));
     }catch(error){setSalesMasterMessage(error instanceof Error?error.message:"登録に失敗しました。");}
     finally{setSalesBusy(false);}
@@ -383,7 +392,8 @@ export default function Home() {
     setSalesDraft({
       productCode:item.productCode,productName:item.productName,supplier:item.supplier,
       quantity:String(item.quantity),unit:item.unit,saleUnitPrice:item.saleUnitPrice===null?"":String(item.saleUnitPrice),
-      purchaseUnitPrice:item.purchaseUnitPrice===null?"":String(item.purchaseUnitPrice),note:item.note
+      purchaseUnitPrice:item.purchaseUnitPrice===null?"":String(item.purchaseUnitPrice),note:item.note,
+      quantitySource:item.quantitySource,quantityReason:item.quantityReason,quantityRuleId:item.quantityRuleId
     });
   }
   function applySalesSuggestion() {
@@ -398,6 +408,14 @@ export default function Home() {
     }));
     setSalesMessage("マスタ候補を入力欄へ反映しました。内容・数量・単価を確認して保存してください。");
   }
+  function applyQuantitySuggestion() {
+    const row=salesResult?.candidates.find(item=>item.id===salesDraftId);
+    if(!row?.quantitySuggestion)return;
+    const rule=row.quantitySuggestion;
+    setSalesDraft(current=>({...current,quantity:String(rule.quantity),unit:rule.unit,
+      quantitySource:"rule",quantityReason:"",quantityRuleId:rule.ruleId}));
+    setSalesMessage("得意先別の数量換算を入力欄に反映しました。実充填量と数量を確認して保存してください。");
+  }
   async function confirmSalesCandidate() {
     if(!salesResult||salesDraftId===null)return;
     setSalesBusy(true);setSalesMessage("");
@@ -409,7 +427,8 @@ export default function Home() {
           quantity:salesDraft.quantity===""?null:Number(salesDraft.quantity),unit:salesDraft.unit,
           saleUnitPrice:salesDraft.saleUnitPrice===""?null:Number(salesDraft.saleUnitPrice),
           purchaseUnitPrice:salesDraft.purchaseUnitPrice===""?null:Number(salesDraft.purchaseUnitPrice),
-          note:salesDraft.note})
+          note:salesDraft.note,quantitySource:salesDraft.quantitySource,
+          quantityReason:salesDraft.quantityReason,quantityRuleId:salesDraft.quantityRuleId})
       });
       const result=await response.json();
       if(!response.ok)throw new Error(result.error??"候補を保存できませんでした。");
@@ -513,19 +532,22 @@ export default function Home() {
 <label>商品コード<input value={salesDraft.productCode} onChange={e=>setSalesDraft(v=>({...v,productCode:e.target.value}))}/></label>
 <label>商品名<input value={salesDraft.productName} onChange={e=>setSalesDraft(v=>({...v,productName:e.target.value}))}/></label>
 <label>仕入先<input value={salesDraft.supplier} onChange={e=>setSalesDraft(v=>({...v,supplier:e.target.value}))}/></label>
-<label>数量<input type="number" min="0.001" step="0.001" value={salesDraft.quantity} onChange={e=>setSalesDraft(v=>({...v,quantity:e.target.value}))}/></label>
-<label>単位<input value={salesDraft.unit} onChange={e=>setSalesDraft(v=>({...v,unit:e.target.value}))}/></label>
+{salesResult?.candidates.find(item=>item.id===salesDraftId)?.quantitySuggestion && <div className="salesSuggestion"><b>得意先別の換算ルール</b><p>{salesResult.candidates.find(item=>item.id===salesDraftId)?.quantitySuggestion?.quantity} {salesResult.candidates.find(item=>item.id===salesDraftId)?.quantitySuggestion?.unit} ／ 容器1本（登録済みルール）</p><button type="button" className="subtleButton" onClick={applyQuantitySuggestion}>換算数量を反映（要確認）</button></div>}
+<label>数量<input type="number" min="0.001" step="0.001" value={salesDraft.quantity} onChange={e=>setSalesDraft(v=>({...v,quantity:e.target.value,quantitySource:"manual",quantityRuleId:null}))}/></label>
+<label>単位<input value={salesDraft.unit} onChange={e=>setSalesDraft(v=>({...v,unit:e.target.value,quantitySource:"manual",quantityRuleId:null}))}/></label>
+<label>数量の根拠<select value={salesDraft.quantitySource} onChange={e=>setSalesDraft(v=>({...v,quantitySource:e.target.value as "rule"|"actual_fill"|"manual",quantityRuleId:e.target.value==="rule"?v.quantityRuleId:null}))}><option value="manual">手動補正</option><option value="actual_fill">実充填量を確認</option>{salesDraft.quantityRuleId&&<option value="rule">登録済み換算ルール</option>}</select></label>
+{salesDraft.quantitySource!=="rule"&&<label className="salesQuantityReason">数量の根拠・補正理由（必須）<textarea rows={2} value={salesDraft.quantityReason} onChange={e=>setSalesDraft(v=>({...v,quantityReason:e.target.value}))}/></label>}
 <label>売上単価（円／単位）<input type="number" min="0" step="0.01" value={salesDraft.saleUnitPrice} onChange={e=>setSalesDraft(v=>({...v,saleUnitPrice:e.target.value}))}/></label>
 <label>仕入単価（円／単位）<input type="number" min="0" step="0.01" value={salesDraft.purchaseUnitPrice} onChange={e=>setSalesDraft(v=>({...v,purchaseUnitPrice:e.target.value}))}/></label>
 <label>確認メモ<input value={salesDraft.note} onChange={e=>setSalesDraft(v=>({...v,note:e.target.value}))}/></label></div>
-<p className="instruction">数量の初期値「1本」は出荷容器1本を表します。㎥・kgなどの換算は自動設定されないため、担当者が数量・単位を確認してください。売上・仕入単価も自動推定しません。</p>
+<p className="instruction">数量の初期値「1本」は出荷容器1本を表します。得意先別の換算ルールがある場合は候補を反映できます。実充填量や手動変更は、確認した根拠・修正理由の記録が必須です。容量からの自動推定は行いません。</p>
 <div className="reconciliationFooter"><button type="button" className="actionButton" disabled={salesBusy} onClick={()=>void confirmSalesCandidate()}>内容を確認して保存</button><button type="button" className="subtleButton" onClick={()=>setSalesDraftId(null)}>キャンセル</button></div></section>}
 {salesGroupTotals.length>0 && <section className="salesGroupSection"><h3>取引先・商品別の確認済み集計</h3><div className="tableWrap"><table className="legacyTable"><thead><tr><th>得意先</th><th>商品コード</th><th>商品名</th><th>確認行数</th><th>数量</th><th>売上金額（税抜・仮）</th></tr></thead><tbody>{salesGroupTotals.map((item,index)=><tr key={index}><td>{item.customer}</td><td>{item.productCode}</td><td>{item.productName}</td><td>{item.count}行</td><td>{item.quantity} {item.unit}</td><td>{item.total.toLocaleString("ja-JP")}円</td></tr>)}</tbody></table></div></section>}
 <div className="reconciliationFooter"><button type="button" className="actionButton" disabled={salesBusy||!salesResult.summary.total||!!salesResult.summary.pending} onClick={()=>void exportSalesCandidates()}>全明細確認済みの売上候補CSVを出力</button></div>
 <p className="instruction">CSV出力は販売管理への正式な送信ではありません。実際の販売管理システムへの取込形式・売上計上仕様は別途確認が必要です。エラー・回収・保留・未照合の明細は候補に含まれません。</p></>}</section>
 <section className="legacyPanel salesCandidatePanel"><div className="panelTitle"><h2>商品・単価マスタ登録</h2><button type="button" className="subtleButton" disabled={salesBusy} onClick={()=>void fetchSalesMasters().catch(error=>setSalesMasterMessage(error instanceof Error?error.message:"取得できませんでした。"))}>マスタ再読込</button></div>
 <p className="instruction">実際に確認した商品・単価だけを登録します。単価は適用開始日・終了日を管理し、出荷日時点で有効なルールを候補に表示します。ガスの本数から㎥・kgへの換算は自動確定しません。</p>
-<div className="monthlyTabs"><button className={salesMasterTab==="product"?"selected":""} type="button" onClick={()=>setSalesMasterTab("product")}>商品コード・商品マスタ</button><button className={salesMasterTab==="price"?"selected":""} type="button" onClick={()=>setSalesMasterTab("price")}>得意先別・仕入先別単価</button></div>
+<div className="monthlyTabs"><button className={salesMasterTab==="product"?"selected":""} type="button" onClick={()=>setSalesMasterTab("product")}>商品コード・商品マスタ</button><button className={salesMasterTab==="price"?"selected":""} type="button" onClick={()=>setSalesMasterTab("price")}>得意先別・仕入先別単価</button><button className={salesMasterTab==="quantity"?"selected":""} type="button" onClick={()=>setSalesMasterTab("quantity")}>得意先別の数量換算</button></div>
 {salesMasterMessage&&<p className="reconciliationMessage" role="status">{salesMasterMessage}</p>}
 {!salesMasters?<p className="instruction">「確定済み取込を読み込む」または「マスタ再読込」で登録画面を準備してください。</p>:
 <>
@@ -534,7 +556,14 @@ export default function Home() {
 <datalist id="sales-owner-suggest">{salesMasters.owners.map(x=><option key={x.id} value={x.code?`${x.code} — ${x.name}`:x.name}/>)}</datalist>
 <datalist id="sales-customer-suggest">{salesMasters.customers.map(x=><option key={x.id} value={x.name}/>)}</datalist>
 <datalist id="sales-product-suggest">{salesMasters.products.map(x=><option key={x.id} value={`${x.product_code} — ${x.product_name}`}/>)}</datalist>
-{salesMasterTab==="product"?<div className="salesEditPanel"><div className="salesEditGrid">
+{salesMasterTab==="quantity"?<div className="salesEditPanel"><h3>得意先別の請求数量・単位</h3><div className="salesEditGrid">
+<label>得意先<input list="sales-customer-suggest" value={quantityMasterForm.customer} onChange={e=>setQuantityMasterForm(v=>({...v,customer:e.target.value}))}/></label>
+<label>商品<input list="sales-product-suggest" value={quantityMasterForm.product} onChange={e=>setQuantityMasterForm(v=>({...v,product:e.target.value}))}/></label>
+<label>請求単位（本・㎥・kgなど）<input value={quantityMasterForm.unit} onChange={e=>setQuantityMasterForm(v=>({...v,unit:e.target.value}))}/></label>
+<label>容器1本あたりの請求数量<input type="number" min="0.001" step="0.001" value={quantityMasterForm.perContainer} onChange={e=>setQuantityMasterForm(v=>({...v,perContainer:e.target.value}))}/></label>
+<label>適用開始日<input type="date" value={quantityMasterForm.from} onChange={e=>setQuantityMasterForm(v=>({...v,from:e.target.value}))}/></label>
+<label>適用終了日（任意）<input type="date" value={quantityMasterForm.until} onChange={e=>setQuantityMasterForm(v=>({...v,until:e.target.value}))}/></label>
+</div><p className="instruction">換算例：1本＝7㎥など、取引先と確認済みの値のみ登録してください。実充填量が異なる場合は売上候補画面で個別に補正します。</p><button type="button" className="actionButton" disabled={salesBusy} onClick={()=>void saveSalesMaster()}>数量換算ルールを登録</button></div>:salesMasterTab==="product"?<div className="salesEditPanel"><div className="salesEditGrid">
 <label>ガス種<input list="sales-gas-suggest" value={productMasterForm.gas} onChange={e=>setProductMasterForm(v=>({...v,gas:e.target.value}))}/></label>
 <label>仕入先（任意）<input list="sales-supplier-suggest" value={productMasterForm.supplier} onChange={e=>setProductMasterForm(v=>({...v,supplier:e.target.value}))}/></label>
 <label>容器保有者（任意）<input list="sales-owner-suggest" value={productMasterForm.owner} onChange={e=>setProductMasterForm(v=>({...v,owner:e.target.value}))}/></label>
@@ -550,7 +579,7 @@ export default function Home() {
 <label>適用開始日<input type="date" value={priceMasterForm.from} onChange={e=>setPriceMasterForm(v=>({...v,from:e.target.value}))}/></label>
 <label>適用終了日（任意）<input type="date" value={priceMasterForm.until} onChange={e=>setPriceMasterForm(v=>({...v,until:e.target.value}))}/></label>
 </div><button type="button" className="actionButton" disabled={salesBusy} onClick={()=>void saveSalesMaster()}>単価ルールを登録</button></div>}
-<div className="salesGroupSection"><h3>登録済み商品・単価ルール</h3><p className="instruction">商品マスタ：{salesMasters.products.length}件 ／ 単価ルール：{salesMasters.prices.length}件。価格の適用条件が重複する場合は候補を自動採用しません。</p><div className="tableWrap"><table className="legacyTable"><thead><tr><th>商品コード</th><th>商品名</th><th>ガス種</th><th>単位</th><th>単価ルール</th></tr></thead><tbody>{salesMasters.products.length?salesMasters.products.map(p=><tr key={p.id}><td>{p.product_code}</td><td>{p.product_name}</td><td>{salesMasters.gases.find(g=>g.id===p.gas_type_id)?.name??"—"}</td><td>{p.unit}</td><td>{salesMasters.prices.filter(rule=>rule.product_mapping_id===p.id).length}件</td></tr>):<tr><td colSpan={5}>商品マスタはまだありません。</td></tr>}</tbody></table></div></div>
+<div className="salesGroupSection"><h3>登録済み商品・単価ルール</h3><p className="instruction">商品マスタ：{salesMasters.products.length}件 ／ 単価ルール：{salesMasters.prices.length}件 ／ 得意先別換算ルール：{salesMasters.quantities.length}件。価格の適用条件が重複する場合は候補を自動採用しません。</p><div className="tableWrap"><table className="legacyTable"><thead><tr><th>商品コード</th><th>商品名</th><th>ガス種</th><th>単位</th><th>単価ルール</th></tr></thead><tbody>{salesMasters.products.length?salesMasters.products.map(p=><tr key={p.id}><td>{p.product_code}</td><td>{p.product_name}</td><td>{salesMasters.gases.find(g=>g.id===p.gas_type_id)?.name??"—"}</td><td>{p.unit}</td><td>{salesMasters.prices.filter(rule=>rule.product_mapping_id===p.id).length}件</td></tr>):<tr><td colSpan={5}>商品マスタはまだありません。</td></tr>}</tbody></table></div></div>
 </>}</section></>}
     {page === "monthly" && <><Breadcrumb items={["請求・月次", "月次処理・帳票"]} /><h1>月次処理・帳票</h1>
       <section className="legacyPanel"><h2>月次業務の対象年月</h2><div className="monthlyControls"><label>対象年月<select value={monthlyMonth} onChange={event => { setMonthlyMonth(event.target.value); setMonthlyReport(null); setMonthlyError(""); }}>{billingMonthOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><button type="button" className="actionButton" disabled={monthlyLoading} onClick={() => void loadMonthlyReport()}>{monthlyLoading ? "読み込み中…" : "月次データを表示"}</button></div>{monthlyError && <p className="monthlyError" role="alert">{monthlyError}</p>}</section>
