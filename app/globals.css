@@ -180,3 +180,16 @@ input::placeholder{color:transparent}
 @media(prefers-reduced-motion:reduce){.networkActivitySpinner,.networkButtonSpinner,.networkActivityProgress{animation-duration:1.8s}}
 
 .networkButtonBusy::after{content:"";display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-bottom-color:transparent;border-radius:50%;margin-inline-start:8px;vertical-align:middle;animation:networkSpin .7s linear infinite}
+
+/* Manually reviewed bulk matching and future automatic reconciliation note */
+.reconciliationFutureNotice{margin:12px 0 16px;padding:12px 15px;border-left:3px solid #477ba1;border-radius:4px;background:#f1f6fa;font-size:13px;line-height:1.7;color:#304f67}
+.reconciliationFutureNotice strong{display:block;margin-bottom:4px}
+.reconciliationBulkPanel{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin:16px 0;padding:17px 20px;border:1px solid #bfd2e1;border-radius:8px;background:#f8fbfe;color:#294b64}
+.reconciliationBulkTop{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:14px}
+.reconciliationBulkTop span{color:#5c7387;font-size:12px}
+.reconciliationBulkButtons{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.reconciliationBulkButtons span{font-size:13px;color:#38566d}
+.reconciliationBulkAgreement{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:600}
+.reconciliationBulkAgreement input{margin-top:3px}
+.reconciliationBulkPanel>.instruction{margin:0}
+@media(max-width:640px){.reconciliationBulkPanel{padding:14px}.reconciliationBulkButtons{align-items:stretch}}
