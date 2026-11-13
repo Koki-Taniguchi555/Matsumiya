@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
         db.from("sales_product_mappings").select("id,unit").eq("id",body.productMappingId).maybeSingle()
       ]);
       if(customer.error||product.error||!customer.data||!product.data)throw new Error("得意先または商品が存在しません。");
+      if(product.data.unit!==unit)throw new Error(`請求単位「${unit}」が商品マスタの単価単位「${product.data.unit}」と一致しません。単価の誤計算を防ぐため、同じ単位の商品マスタを選択してください。`);
       const existing=await db.from("sales_customer_quantity_rules").select("id,effective_from,effective_until")
         .eq("customer_id",body.customerId).eq("product_mapping_id",body.productMappingId);
       if(existing.error)throw new Error(existing.error.message);
