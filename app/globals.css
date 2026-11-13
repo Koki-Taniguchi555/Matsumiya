@@ -193,3 +193,6 @@ input::placeholder{color:transparent}
 .reconciliationBulkAgreement input{margin-top:3px}
 .reconciliationBulkPanel>.instruction{margin:0}
 @media(max-width:640px){.reconciliationBulkPanel{padding:14px}.reconciliationBulkButtons{align-items:stretch}}
+
+/* Sales candidate values derived from masters are suggestions, never confirmed values */
+.salesCandidateSuggestionLabel{color:#326f96!important;font-size:11px!important;font-weight:650}
