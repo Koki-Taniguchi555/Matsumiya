@@ -647,7 +647,7 @@ function NetworkActionFeedback() {
     document.addEventListener("submit", captureSubmit, true);
     const trackedFetch: typeof fetch = (input, init) => {
       const button = Date.now() <= clickExpiry ? lastAction : null;
-      const label = button?.textContent?.replace(/\\s+/g, " ").trim() || "データを読み込み中";
+      const label = button?.textContent?.replace(/\s+/g, " ").trim() || "データを読み込み中";
       inFlight += 1;
       if (mounted) {
         setPending(inFlight);
