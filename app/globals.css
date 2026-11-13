@@ -142,3 +142,11 @@ input::placeholder{color:transparent}
 .salesEditGrid input{display:block;margin-top:6px;width:100%;box-sizing:border-box;padding:10px;border-radius:5px;border:1px solid #b5cadb;background:#fff;color:#20394d;font:inherit}
 .salesGroupSection{margin:20px 0}
 @media(max-width:640px){.salesCandidatePanel{padding:14px}.salesEditPanel{padding:14px}}
+
+/* Product and price master suggestions */
+.salesSuggestion{grid-column:1/-1;padding:14px 16px;border:1px solid #b9d5e6;border-radius:6px;background:#f2f8fc;font-size:13px;line-height:1.55}
+.salesSuggestion p{margin:6px 0}
+.salesSuggestion .salesWarning{color:#985522}
+.salesSuggestion button{margin-top:9px}
+.salesCandidatePanel .salesEditPanel>.actionButton{margin-top:15px}
+.salesCandidatePanel .salesGroupSection{margin-top:20px}
