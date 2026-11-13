@@ -502,7 +502,7 @@ export default function Home() {
     }
   }
 
-  return <div className="legacyShell"><header className="legacyHeader"><button className="brand" onClick={() => choosePage("home")}><span>松宮工材</span><strong>容器管理システム</strong></button><div className="headerMeta">業務日：2026年10月17日　／　ログイン済み <button className="signOutButton" onClick={() => void signOut()}>ログアウト</button></div></header><div className="legacyLayout"><aside className="legacySidebar"><button className={`homeButton ${page === "home" ? "selected" : ""}`} onClick={() => choosePage("home")}>業務メニュー</button>{menus.map((group) => <section key={group.heading}><h2>{group.heading}</h2>{group.items.map(([target, label], index) => <button className={page === target ? "selected" : ""} onClick={() => choosePage(target)} key={`${target}-${index}`}>{label}</button>)}</section>)}</aside><main className="legacyMain">
+  return <div className="legacyShell"><NetworkActionFeedback/><header className="legacyHeader"><button className="brand" onClick={() => choosePage("home")}><span>松宮工材</span><strong>容器管理システム</strong></button><div className="headerMeta">業務日：2026年10月17日　／　ログイン済み <button className="signOutButton" onClick={() => void signOut()}>ログアウト</button></div></header><div className="legacyLayout"><aside className="legacySidebar"><button className={`homeButton ${page === "home" ? "selected" : ""}`} onClick={() => choosePage("home")}>業務メニュー</button>{menus.map((group) => <section key={group.heading}><h2>{group.heading}</h2>{group.items.map(([target, label], index) => <button className={page === target ? "selected" : ""} onClick={() => choosePage(target)} key={`${target}-${index}`}>{label}</button>)}</section>)}</aside><main className="legacyMain">
     {page === "home" && <><div className="crumb">業務メニュー</div><h1>容器管理　メインメニュー</h1><section className="legacyPanel"><h2>業務選択</h2><div className="menuGrid">{menus.flatMap((group) => group.items).map(([target, label], index) => <button key={`${target}-${index}`} onClick={() => choosePage(target)}><b>{label}</b><span>{target === "daily" ? "入荷・納品・回収" : target === "handheld" ? "CSV検証・取り込み" : target === "ledger" ? "瓶号・バーコード・所在を検索" : target === "masters" ? "容器・取引先・ガス種を登録" : "一覧・管理処理"}</span></button>)}</div></section><section className="legacyPanel"><h2>お知らせ</h2><p>現行システムの分類に合わせ、日常業務・照会・月次・マスタを左メニューへ集約しています。すべてのサンプルデータは <b>DEMO-</b> または「サンプル」表記です。</p></section></>}
     {page === "ledger" && <><Breadcrumb items={["照会", "容器台帳照会"]} /><h1>容器台帳照会</h1><section className="legacyPanel filters"><h2>検索条件</h2><label>瓶号・バーコード・ガス種・営業所・顧客<input value={query} onChange={(event) => setQuery(event.target.value)}  /></label><div><button className="actionButton" onClick={() => setQuery("")}>条件クリア</button><button className="subtleButton" onClick={() => void loadLedger()}>再読込</button></div></section><section className="legacyPanel"><div className="panelTitle"><h2>容器一覧</h2><span>{loading ? "読込中…" : `${filtered.length} 件`}</span></div><div className="tableWrap"><table className="legacyTable"><thead><tr><th>瓶号</th><th>管理番号 / バーコード</th><th>営業所・顧客</th><th>保有者</th><th>ガス種</th><th>容器形態</th><th>容量</th><th>耐圧期限</th><th>状態</th><th>履歴</th></tr></thead><tbody>{loading ? <tr><td colSpan={10}>読み込み中…</td></tr> : filtered.length === 0 ? <tr><td colSpan={10}>該当する容器はありません。</td></tr> : filtered.map((c) => <tr key={c.id}><td><b>{c.serial_number}</b></td><td>{c.management_number || "－"}<small>{c.barcode || "バーコード未登録"}</small></td><td>{c.branches?.name || c.customers?.name || "未設定"}</td><td>{c.container_owners?.name || "未設定"}</td><td>{c.gas_types?.name || c.container_type}</td><td>{c.container_form}</td><td>{c.capacity_value ? `${c.capacity_value}${c.capacity_unit ?? ""}` : "－"}</td><td>{c.pressure_test_due_month || "－"}</td><td><span className={`status ${c.status}`}>{statusLabel[c.status] ?? c.status}</span><small>{conditionLabel[c.condition] ?? c.condition}</small></td><td><button className="tableButton" onClick={() => openHistory(c.id)}>移動履歴</button></td></tr>)}</tbody></table></div></section></>}
     {page === "history" && <><Breadcrumb items={["照会", "容器移動履歴照会"]} /><h1>容器移動履歴照会</h1><section className="legacyPanel filters"><h2>検索条件</h2><p className="instruction">文字入力欄を選択すると候補が表示されます。入力して絞り込むこともできます。</p><label>容器<input value={historyContainerText} onChange={(event) => setHistoryContainerText(event.target.value)} list="container-options"  /></label><label>得意先<input value={historyCustomerText} onChange={(event) => setHistoryCustomerText(event.target.value)} list="customer-options"  /></label><label>仕入先<input value={historySupplierText} onChange={(event) => setHistorySupplierText(event.target.value)} list="supplier-options"  /></label><label>処理営業所<input value={historyBranchText} onChange={(event) => setHistoryBranchText(event.target.value)} list="branch-options"  /></label><div><button className="actionButton" onClick={() => void loadHistory()}>履歴を表示</button></div></section><section className="legacyPanel"><div className="panelTitle"><h2>移動履歴</h2><span>{historyResult ? `${historyResult.history.length} 件` : "条件を指定してください"}</span></div>{historyLoading ? <p className="instruction">読み込み中…</p> : !historyResult ? <p className="instruction">容器・得意先・仕入先・処理営業所を組み合わせて、移動履歴を照会できます。</p> : <div className="tableWrap"><table className="legacyTable"><thead><tr><th>瓶号</th><th>処理日</th><th>処理区分</th><th>移動元</th><th>移動先</th><th>得意先</th><th>仕入先</th><th>処理営業所</th><th>順序確認</th><th>同日順序訂正</th></tr></thead><tbody>{historyResult.history.length === 0 ? <tr><td colSpan={10}>該当する移動履歴はありません。</td></tr> : historyResult.history.map((item) => <tr key={item.id} className={item.sequenceError ? "sequenceError" : ""}><td><b>{item.containerSerialNumber}</b><small>{item.managementNumber || "－"}</small></td><td>{item.occurredOn}</td><td>{item.actionLabel}</td><td>{item.from}</td><td>{item.to}</td><td>{item.customer}</td><td>{item.supplier}</td><td>{item.handledBranch}</td><td>{item.sequenceError ? `エラー：${item.sequenceError}` : "正常"}{item.orderAdjusted && <small>表示順訂正済み</small>}</td><td><button type="button" className="subtleButton historyOrderButton" onClick={() => startHistoryOrderEdit(item)}>順序確認</button></td></tr>)}</tbody></table></div>}</section>{orderMessage && <section className="legacyPanel historyOrderMessage">{orderMessage}</section>}{orderEdit && <section className="legacyPanel historyOrderPanel"><h2>同日内の履歴表示順の訂正</h2><p className="instruction">対象日：{orderEdit.occurredOn}。上から古い順です。元の移動記録、容器所在、貸出・請求計算は変更しません。変更理由と操作担当者は監査記録に残ります。</p><div className="historyOrderRows">{orderEdit.orderedIds.map((id, index) => { const row = historyResult?.history.find(item => item.id === id); return <div key={id} className="historyOrderRow"><span>{index + 1}. {row?.actionLabel} ／ {row?.containerSerialNumber} ／ 履歴ID {id}</span><div><button type="button" onClick={() => moveHistoryOrder(index, -1)} disabled={index === 0}>上へ</button><button type="button" onClick={() => moveHistoryOrder(index, 1)} disabled={index === orderEdit.orderedIds.length - 1}>下へ</button></div></div>; })}</div><label className="historyOrderReason">訂正理由<textarea value={orderEdit.reason} onChange={event => setOrderEdit(current => current ? { ...current, reason: event.target.value } : null)} rows={2} /></label><div className="historyOrderActions"><button type="button" className="actionButton" disabled={orderSaving || orderEdit.reason.trim().length < 3} onClick={() => void saveHistoryOrder()}>{orderSaving ? "保存中…" : "訂正内容を保存"}</button><button type="button" className="subtleButton" onClick={() => setOrderEdit(null)}>キャンセル</button></div></section>}</>}
@@ -613,6 +613,102 @@ export default function Home() {
     {page === "inspection" && inventorySessionId && <section className="legacyPanel"><div className="panelTitle"><h2>棚卸差異</h2><button type="button" className="subtleButton" onClick={() => void loadInventoryDifference()}>差異を更新</button></div>{inventoryDifference ? <><p className="instruction">帳簿在庫 {inventoryDifference.expected} 本 ／ 読取済 {inventoryDifference.scanned} 本 ／ 未読取 {inventoryDifference.missing.length} 本 ／ 帳簿外読取 {inventoryDifference.unexpected.length} 本</p><div className="tableWrap"><table className="legacyTable"><thead><tr><th>区分</th><th>瓶号</th><th>管理番号</th></tr></thead><tbody>{inventoryDifference.missing.length === 0 && inventoryDifference.unexpected.length === 0 ? <tr><td colSpan={3}>差異はありません。</td></tr> : <>{inventoryDifference.missing.map((item) => <tr key={`missing-${item.id}`}><td>未読取（帳簿在庫）</td><td>{item.serial_number}</td><td>{item.management_number || "－"}</td></tr>)}{inventoryDifference.unexpected.map((item) => <tr key={`unexpected-${item.container_id}`} className="sequenceError"><td>帳簿外読取</td><td>{item.containers?.serial_number || "不明"}</td><td>{item.containers?.management_number || "－"}</td></tr>)}</>}</tbody></table></div></> : <p className="instruction">読取後に「差異を更新」を押すと、帳簿在庫との照合結果を表示します。</p>}<form className="legacyForm" onSubmit={submitOperation}><input type="hidden" name="action" value="closeInventory" /><input type="hidden" name="sessionId" value={inventorySessionId}/><button className="subtleButton">棚卸を確定</button></form></section>}
     <p className="notice" role="status">{notice}</p>
   </main></div></div>;
+}
+
+/**
+ * Shared feedback for server operations across all screens. It attaches to existing
+ * buttons without changing their business logic and follows request completion.
+ */
+function NetworkActionFeedback() {
+  const [pending, setPending] = useState(0);
+  const [actionLabel, setActionLabel] = useState("データを読み込み中");
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    let lastAction: HTMLButtonElement | null = null;
+    let clickExpiry = 0;
+    let inFlight = 0;
+    let mounted = true;
+    const buttonCounts = new Map<HTMLButtonElement, { count: number; disabled: boolean; spinner: HTMLSpanElement }>();
+    const captureClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button");
+      if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+      lastAction = button;
+      clickExpiry = Date.now() + 750;
+    };
+    const captureSubmit = (event: SubmitEvent) => {
+      const button = event.submitter;
+      if (!(button instanceof HTMLButtonElement)) return;
+      lastAction = button;
+      clickExpiry = Date.now() + 750;
+    };
+    document.addEventListener("click", captureClick, true);
+    document.addEventListener("submit", captureSubmit, true);
+    const trackedFetch: typeof fetch = (input, init) => {
+      const button = Date.now() <= clickExpiry ? lastAction : null;
+      const label = button?.textContent?.replace(/\\s+/g, " ").trim() || "データを読み込み中";
+      inFlight += 1;
+      if (mounted) {
+        setPending(inFlight);
+        setActionLabel(label);
+      }
+      if (button) {
+        const existing = buttonCounts.get(button);
+        if (existing) existing.count++;
+        else {
+          const spinner = document.createElement("span");
+          spinner.className = "networkButtonSpinner";
+          spinner.setAttribute("aria-hidden", "true");
+          button.appendChild(spinner);
+          buttonCounts.set(button, { count: 1, disabled: button.disabled, spinner });
+          button.classList.add("networkButtonBusy");
+          button.setAttribute("aria-busy", "true");
+          button.disabled = true;
+        }
+      }
+      let promise: Promise<Response>;
+      try {
+        promise = originalFetch.call(window, input, init);
+      } catch (error) {
+        promise = Promise.reject(error);
+      }
+      return promise.finally(() => {
+        inFlight = Math.max(0, inFlight - 1);
+        if (mounted) setPending(inFlight);
+        if (!button) return;
+        const state = buttonCounts.get(button);
+        if (!state) return;
+        state.count--;
+        if (state.count === 0) {
+          button.disabled = state.disabled;
+          button.classList.remove("networkButtonBusy");
+          button.removeAttribute("aria-busy");
+          state.spinner.remove();
+          buttonCounts.delete(button);
+        }
+      });
+    };
+    window.fetch = trackedFetch;
+    return () => {
+      mounted = false;
+      document.removeEventListener("click", captureClick, true);
+      document.removeEventListener("submit", captureSubmit, true);
+      if (window.fetch === trackedFetch) window.fetch = originalFetch;
+      for (const [button, state] of buttonCounts) {
+        button.disabled = state.disabled;
+        button.classList.remove("networkButtonBusy");
+        button.removeAttribute("aria-busy");
+        state.spinner.remove();
+      }
+    };
+  }, []);
+  if (!pending) return null;
+  return <div className="networkActivityIndicator" role="status" aria-live="polite">
+    <span className="networkActivitySpinner" aria-hidden="true"/>
+    <span>{actionLabel === "データを読み込み中" ? actionLabel : `${actionLabel}：処理中…`}</span>
+    <span className="networkActivityProgress" aria-hidden="true"/>
+  </div>;
 }
 
 function Breadcrumb({ items }: { items: string[] }) { return <div className="crumb">業務メニュー　&gt;　{items.join("　&gt;　")}</div>; }
