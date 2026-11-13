@@ -10,13 +10,15 @@ type SourceRow = {
 type Review = {
   import_row_id: number; product_code: string; product_name: string; supplier_name: string;
   quantity: number; unit: string; sale_unit_price: number; purchase_unit_price: number;
-  note: string; confirmed_at: string;
+  note: string; confirmed_at: string; quantity_source: "rule" | "actual_fill" | "manual"; quantity_reason: string; quantity_rule_id: string | null;
 };
 type Candidate = {
   id: number; lineNumber: number; deliveredOn: string; referenceNumber: string; customer: string;
   branch: string; serialNumber: string; gasName: string; quantity: number; unit: string;
   productCode: string; productName: string; supplier: string; saleUnitPrice: number | null;
   purchaseUnitPrice: number | null; note: string; confirmed: boolean; confirmedAt: string | null;
+  quantitySource: "rule" | "actual_fill" | "manual"; quantityReason: string; quantityRuleId: string | null;
+  quantitySuggestion: { ruleId: string; quantity: number; unit: string; explanation: string } | null;
   suggestion: { productCode: string; productName: string; supplier: string; unit: string; saleUnitPrice: number | null; purchaseUnitPrice: number | null; source: string; warnings: string[] } | null;
 };
 const validUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -46,7 +48,7 @@ async function loadCandidates(importId: string) {
   const containerIds = [...new Set(source.map(item => item.container_id).filter((v): v is string => !!v))];
   const [checks, reviews, containers] = await Promise.all([
     db.from("handheld_reconciliation_checks").select("import_row_id,decision").in("import_row_id",ids),
-    db.from("sales_candidate_reviews").select("import_row_id,product_code,product_name,supplier_name,quantity,unit,sale_unit_price,purchase_unit_price,note,confirmed_at").in("import_row_id",ids),
+    db.from("sales_candidate_reviews").select("import_row_id,product_code,product_name,supplier_name,quantity,unit,sale_unit_price,purchase_unit_price,note,confirmed_at,quantity_source,quantity_reason,quantity_rule_id").in("import_row_id",ids),
     containerIds.length ? db.from("containers").select("id,serial_number,capacity_value,capacity_unit,gas_type_id,owner_id,gas_types(name)").in("id",containerIds) : Promise.resolve({ data: [], error: null })
   ]);
   const err = [checks,reviews,containers].find(item => item.error);
@@ -54,15 +56,16 @@ async function loadCandidates(importId: string) {
   const matching = new Set((checks.data ?? []).filter(item => item.decision === "matched").map(item => item.import_row_id));
   const reviewMap = new Map((reviews.data ?? []).map(item => [item.import_row_id, item as Review]));
   const containerMap = new Map((containers.data ?? []).map(item => [item.id,item]));
-  const [productsResult, pricesResult, customersResult, suppliersResult] = await Promise.all([
+  const [productsResult, pricesResult, customersResult, suppliersResult, quantityRulesResult] = await Promise.all([
     db.from("sales_product_mappings").select("id,gas_type_id,supplier_id,owner_id,product_code,product_name,unit"),
     db.from("sales_price_rules").select("id,product_mapping_id,price_kind,customer_id,supplier_id,owner_id,unit_price,effective_from,effective_until"),
     db.from("customers").select("id,name"),
-    db.from("suppliers").select("id,name")
+    db.from("suppliers").select("id,name"),
+    db.from("sales_customer_quantity_rules").select("id,customer_id,product_mapping_id,billing_unit,quantity_per_container,effective_from,effective_until")
   ]);
-  const failed = [productsResult,pricesResult,customersResult,suppliersResult].find(item=>item.error);
+  const failed = [productsResult,pricesResult,customersResult,suppliersResult,quantityRulesResult].find(item=>item.error);
   if(failed?.error)throw new Error(failed.error.message);
-  const products=productsResult.data??[], prices=pricesResult.data??[];
+  const products=productsResult.data??[], prices=pricesResult.data??[], quantityRules=quantityRulesResult.data??[];
   const customerIds=new Map((customersResult.data??[]).map(item=>[item.name,item.id]));
   const supplierNames=new Map((suppliersResult.data??[]).map(item=>[item.id,item.name]));
   const supplierIds=new Map((suppliersResult.data??[]).map(item=>[item.name,item.id]));
@@ -109,6 +112,17 @@ async function loadCandidates(importId: string) {
     if(salesPrice?.warning)warnings.push("売上："+salesPrice.warning);
     if(purchasePrice?.warning)warnings.push("仕入："+purchasePrice.warning);
     if(match&&match.unit!=="本")warnings.push("請求単位が本数以外です。換算数量を手動確認してください。");
+    const applicableRules = match && item.occurred_on ? quantityRules.filter(rule =>
+      rule.customer_id === customerIds.get(customer) && rule.product_mapping_id === match.id &&
+      rule.effective_from <= item.occurred_on! && (!rule.effective_until || rule.effective_until >= item.occurred_on!)
+    ) : [];
+    const quantityRule = applicableRules.length === 1 ? applicableRules[0] : null;
+    const quantitySuggestion = quantityRule ? {
+      ruleId: quantityRule.id, quantity: Number(quantityRule.quantity_per_container),
+      unit: quantityRule.billing_unit, explanation: "得意先・商品別の1本あたり数量換算ルール"
+    } : null;
+    if (match && match.unit !== "本" && !quantityRule)
+      warnings.push(applicableRules.length > 1 ? "換算ルールが複数あります。" : "得意先別の数量換算ルールがありません。");
     const suggestion=match?{
       productCode:match.product_code,productName:match.product_name,supplier:inferredSupplier,
       unit:match.unit,saleUnitPrice:salesPrice?.price??null,purchaseUnitPrice:purchasePrice?.price??null,
@@ -127,7 +141,8 @@ async function loadCandidates(importId: string) {
       saleUnitPrice: review ? Number(review.sale_unit_price) : null,
       purchaseUnitPrice: review ? Number(review.purchase_unit_price) : null,
       note: review?.note ?? "", confirmed: !!review,
-      confirmedAt: review?.confirmed_at ?? null, suggestion
+      confirmedAt: review?.confirmed_at ?? null, suggestion, quantitySuggestion,
+      quantitySource: review?.quantity_source ?? "manual", quantityReason: review?.quantity_reason ?? "", quantityRuleId: review?.quantity_rule_id ?? null
     };
   });
   return {
@@ -196,6 +211,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as {
       importId?:string; rowId?:number; productCode?:string; productName?:string; supplier?:string;
       quantity?:number; unit?:string; saleUnitPrice?:number; purchaseUnitPrice?:number; note?:string;
+      quantitySource?: "rule" | "actual_fill" | "manual"; quantityReason?: string; quantityRuleId?: string | null;
     };
     if (!body.importId || !validUuid(body.importId) || !Number.isSafeInteger(body.rowId)) throw new Error("取込・明細IDを確認してください。");
     const dataset = await loadCandidates(body.importId);
@@ -214,16 +230,31 @@ export async function POST(request: NextRequest) {
     const quantity=body.quantity!, sale=body.saleUnitPrice!, purchase=body.purchaseUnitPrice!;
     if (quantity<=0 || quantity>9999999 || sale<0 || sale>9999999999 || purchase<0 || purchase>9999999999) throw new Error("数量または単価が範囲外です。");
     if (Math.round(quantity*1000)!==quantity*1000 || Math.round(sale*100)!==sale*100 || Math.round(purchase*100)!==purchase*100) throw new Error("数量は小数3桁、単価は小数2桁までにしてください。");
+    const quantitySource=body.quantitySource??"manual";
+    if (!["rule","actual_fill","manual"].includes(quantitySource)) throw new Error("数量の入力区分が不正です。");
+    let quantityRuleId: string | null = null;
+    let quantityReason=String(body.quantityReason??"").trim();
+    if (quantityReason.length>1000) throw new Error("数量補正理由は1000文字以内で入力してください。");
+    if (quantitySource==="rule") {
+      const expected=row.quantitySuggestion;
+      if (!expected || expected.ruleId!==body.quantityRuleId || Math.abs(expected.quantity-quantity)>0.000001 || expected.unit!==unit)
+        throw new Error("換算ルールの数量と一致しません。ルールを再適用するか、手動補正の理由を入力してください。");
+      quantityRuleId=expected.ruleId;
+      quantityReason="";
+    } else if (quantityReason.length<3) {
+      throw new Error("実充填量・手動補正の数量根拠を3文字以上入力してください。");
+    }
     const db=adminClient();
     const saved=await db.from("sales_candidate_reviews").upsert({
       import_row_id:row.id,product_code:productCode,product_name:productName,supplier_name:supplier,
       quantity,unit,sale_unit_price:sale,purchase_unit_price:purchase,note,
+      quantity_source:quantitySource,quantity_reason:quantityReason,quantity_rule_id:quantityRuleId,
       confirmed_by:auth.user.id,confirmed_at:new Date().toISOString()
     },{onConflict:"import_row_id"});
     if(saved.error)throw new Error(saved.error.message);
     const audit=await db.from("sales_candidate_review_events").insert({
       import_row_id:row.id,event_type:row.confirmed?"reconfirmed":"confirmed",performed_by:auth.user.id,
-      details:{productCode,productName,supplier,quantity,unit,sale,purchase,note,posted:false}
+      details:{productCode,productName,supplier,quantity,unit,sale,purchase,note,quantitySource,quantityReason,quantityRuleId,posted:false}
     });
     if(audit.error)throw new Error(audit.error.message);
     return NextResponse.json({ok:true,result:await loadCandidates(body.importId)});
