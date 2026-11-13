@@ -19,6 +19,8 @@ type Candidate = {
   purchaseUnitPrice: number | null; note: string; confirmed: boolean; confirmedAt: string | null;
   quantitySource: "rule" | "actual_fill" | "manual"; quantityReason: string; quantityRuleId: string | null;
   quantitySuggestion: { ruleId: string; quantity: number; unit: string; explanation: string } | null;
+  actualFillSuggestion: { quantity: number; unit: string; source: string; standardQuantity: number | null; differsFromStandard: boolean } | null;
+  actualFillWarning: string | null;
   suggestion: { productCode: string; productName: string; supplier: string; unit: string; saleUnitPrice: number | null; purchaseUnitPrice: number | null; source: string; warnings: string[] } | null;
 };
 const validUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -123,6 +125,25 @@ async function loadCandidates(importId: string) {
     } : null;
     if (match && match.unit !== "本" && !quantityRule)
       warnings.push(applicableRules.length > 1 ? "換算ルールが複数あります。" : "得意先別の数量換算ルールがありません。");
+    // Only explicit "actual fill" CSV fields are authoritative. The generic capacity
+    // columns describe cylinder nominal capacity and must never be auto-billed.
+    const fillText=rawText(raw,"actualFillValue","実充填量");
+    const fillUnitRaw=rawText(raw,"actualFillUnit","実充填量単位");
+    const fillUnit=fillUnitRaw==="㎥"?"m3":fillUnitRaw;
+    const fillNumber=Number(fillText);
+    const targetUnit=quantitySuggestion?.unit??match?.unit??null;
+    const actualFillValid=!!fillText&&/^\\d+(?:\\.\\d{1,3})?$/.test(fillText)&&
+      Number.isFinite(fillNumber)&&fillNumber>0&&fillNumber<=9999999 &&
+      !!fillUnit&&fillUnit===targetUnit;
+    const actualFillSuggestion=actualFillValid?{
+      quantity:fillNumber,unit:fillUnit,source:"ハンディCSVの実充填量",
+      standardQuantity:quantitySuggestion?.quantity??null,
+      differsFromStandard:!!quantitySuggestion&&Math.abs(fillNumber-quantitySuggestion.quantity)>0.000001
+    }:null;
+    const actualFillWarning=fillText||fillUnitRaw
+      ? (actualFillValid?null:!fillText||!fillUnitRaw?"実充填量と単位の両方を入力してください。":!targetUnit?"商品・換算マスタが未設定のため実充填量を反映できません。":fillUnit!==targetUnit?"実充填量の単位が請求単位と一致しません。単位換算は自動実行しません。":"実充填量が不正です。")
+      :null;
+    if(actualFillWarning)warnings.push(actualFillWarning);
     const suggestion=match?{
       productCode:match.product_code,productName:match.product_name,supplier:inferredSupplier,
       unit:match.unit,saleUnitPrice:salesPrice?.price??null,purchaseUnitPrice:purchasePrice?.price??null,
@@ -135,14 +156,17 @@ async function loadCandidates(importId: string) {
       branch: rawText(raw,"branchName","営業所"),
       serialNumber: container?.serial_number ?? item.barcode ?? "",
       gasName: rawText(raw,"gasName","ガス種") || gasName,
-      quantity: review ? Number(review.quantity) : 1, unit: review?.unit ?? "本",
+      quantity: review ? Number(review.quantity) : (actualFillSuggestion?.quantity??quantitySuggestion?.quantity??1),
+      unit: review?.unit ?? (actualFillSuggestion?.unit??quantitySuggestion?.unit??"本"),
       productCode: review?.product_code ?? "", productName: review?.product_name ?? "",
       supplier: review?.supplier_name ?? rawText(raw,"supplierName","仕入先"),
       saleUnitPrice: review ? Number(review.sale_unit_price) : null,
       purchaseUnitPrice: review ? Number(review.purchase_unit_price) : null,
       note: review?.note ?? "", confirmed: !!review,
-      confirmedAt: review?.confirmed_at ?? null, suggestion, quantitySuggestion,
-      quantitySource: review?.quantity_source ?? "manual", quantityReason: review?.quantity_reason ?? "", quantityRuleId: review?.quantity_rule_id ?? null
+      confirmedAt: review?.confirmed_at ?? null, suggestion, quantitySuggestion, actualFillSuggestion, actualFillWarning,
+      quantitySource: review?.quantity_source ?? (actualFillSuggestion?"actual_fill":quantitySuggestion?"rule":"manual"),
+      quantityReason: review?.quantity_reason ?? (actualFillSuggestion?"ハンディCSVの実充填量を採用（確認待ち）":""),
+      quantityRuleId: review?.quantity_rule_id ?? (actualFillSuggestion?null:quantitySuggestion?.ruleId??null)
     };
   });
   return {
@@ -242,6 +266,12 @@ export async function POST(request: NextRequest) {
         throw new Error("換算ルールの数量と一致しません。ルールを再適用するか、手動補正の理由を入力してください。");
       quantityRuleId=expected.ruleId;
       quantityReason="";
+    } else if (quantitySource==="actual_fill" && (
+      !row.actualFillSuggestion ||
+      Math.abs(row.actualFillSuggestion.quantity-quantity)>0.000001 ||
+      row.actualFillSuggestion.unit!==unit
+    )) {
+      throw new Error("ハンディ実充填量の候補と一致しません。実充填量を再適用するか、手動補正を選択してください。");
     } else if (quantityReason.length<3) {
       throw new Error("実充填量・手動補正の数量根拠を3文字以上入力してください。");
     }
