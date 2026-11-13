@@ -17,6 +17,7 @@ type Candidate = {
   branch: string; serialNumber: string; gasName: string; quantity: number; unit: string;
   productCode: string; productName: string; supplier: string; saleUnitPrice: number | null;
   purchaseUnitPrice: number | null; note: string; confirmed: boolean; confirmedAt: string | null;
+  suggestion: { productCode: string; productName: string; supplier: string; unit: string; saleUnitPrice: number | null; purchaseUnitPrice: number | null; source: string; warnings: string[] } | null;
 };
 const validUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const rawText = (raw: Record<string,string> | null, key: string, alternative: string) => String(raw?.[key] ?? raw?.[alternative] ?? "").trim();
@@ -46,13 +47,41 @@ async function loadCandidates(importId: string) {
   const [checks, reviews, containers] = await Promise.all([
     db.from("handheld_reconciliation_checks").select("import_row_id,decision").in("import_row_id",ids),
     db.from("sales_candidate_reviews").select("import_row_id,product_code,product_name,supplier_name,quantity,unit,sale_unit_price,purchase_unit_price,note,confirmed_at").in("import_row_id",ids),
-    containerIds.length ? db.from("containers").select("id,serial_number,capacity_value,capacity_unit,gas_types(name)").in("id",containerIds) : Promise.resolve({ data: [], error: null })
+    containerIds.length ? db.from("containers").select("id,serial_number,capacity_value,capacity_unit,gas_type_id,owner_id,gas_types(name)").in("id",containerIds) : Promise.resolve({ data: [], error: null })
   ]);
   const err = [checks,reviews,containers].find(item => item.error);
   if (err?.error) throw new Error(err.error.message);
   const matching = new Set((checks.data ?? []).filter(item => item.decision === "matched").map(item => item.import_row_id));
   const reviewMap = new Map((reviews.data ?? []).map(item => [item.import_row_id, item as Review]));
   const containerMap = new Map((containers.data ?? []).map(item => [item.id,item]));
+  const [productsResult, pricesResult, customersResult, suppliersResult] = await Promise.all([
+    db.from("sales_product_mappings").select("id,gas_type_id,supplier_id,owner_id,product_code,product_name,unit"),
+    db.from("sales_price_rules").select("id,product_mapping_id,price_kind,customer_id,supplier_id,owner_id,unit_price,effective_from,effective_until"),
+    db.from("customers").select("id,name"),
+    db.from("suppliers").select("id,name")
+  ]);
+  const failed = [productsResult,pricesResult,customersResult,suppliersResult].find(item=>item.error);
+  if(failed?.error)throw new Error(failed.error.message);
+  const products=productsResult.data??[], prices=pricesResult.data??[];
+  const customerIds=new Map((customersResult.data??[]).map(item=>[item.name,item.id]));
+  const supplierNames=new Map((suppliersResult.data??[]).map(item=>[item.id,item.name]));
+  const supplierIds=new Map((suppliersResult.data??[]).map(item=>[item.name,item.id]));
+  function findPrice(productId: string, kind: "sale"|"purchase", targetId: string|null, ownerId: string|null, on: string) {
+    if(!targetId||!on)return {price:null as number|null,warning:"単価の照合条件が不足しています。"};
+    const options=prices.filter(price=>price.product_mapping_id===productId&&price.price_kind===kind&&
+      (kind==="sale"?price.customer_id===targetId:price.supplier_id===targetId)&&
+      (kind==="sale"||!price.owner_id||price.owner_id===ownerId)&&
+      price.effective_from<=on&&(!price.effective_until||price.effective_until>=on));
+    if(kind==="purchase"){
+      const specific=options.filter(price=>price.owner_id===ownerId&&!!ownerId);
+      if(specific.length)options.splice(0,options.length,...specific);
+      else options.splice(0,options.length,...options.filter(price=>!price.owner_id));
+    }
+    options.sort((a,b)=>b.effective_from.localeCompare(a.effective_from));
+    if(!options.length)return {price:null as number|null,warning:"該当日付に適用できる単価マスタがありません。"};
+    if(options.length>1&&options[0].effective_from===options[1].effective_from)return {price:null as number|null,warning:"同一適用日の単価が複数登録されています。"};
+    return {price:Number(options[0].unit_price),warning:""};
+  }
   const eligible = source.filter(item => matching.has(item.id));
   const candidates: Candidate[] = eligible.map(item => {
     const raw = item.raw_row;
@@ -61,6 +90,31 @@ async function loadCandidates(importId: string) {
     const gasJoin = container?.gas_types as { name?: string } | { name?: string }[] | null;
     const gasName = Array.isArray(gasJoin) ? gasJoin[0]?.name ?? "" : gasJoin?.name ?? "";
     const customer = rawText(raw,"customerName","顧客");
+    const gasId=container?.gas_type_id ?? null;
+    const ownerId=container?.owner_id ?? null;
+    const inputSupplier=rawText(raw,"supplierName","仕入先");
+    const supplierId=inputSupplier ? supplierIds.get(inputSupplier)??null:null;
+    const productOptions=products.filter(p=>p.gas_type_id===gasId&&
+      (!p.owner_id||p.owner_id===ownerId)&&(!p.supplier_id||!supplierId||p.supplier_id===supplierId));
+    const specificOwner=productOptions.filter(p=>p.owner_id===ownerId&&!!ownerId);
+    const ownerFiltered=specificOwner.length?specificOwner:productOptions.filter(p=>!p.owner_id);
+    const supplierSpecific=ownerFiltered.filter(p=>p.supplier_id===supplierId&&!!supplierId);
+    const candidates=supplierSpecific.length?supplierSpecific:ownerFiltered.filter(p=>!p.supplier_id||!supplierId);
+    const match=candidates.length===1?candidates[0]:null;
+    const warnings:string[]=[];
+    if(!match)warnings.push(candidates.length>1?"商品候補が複数あります。商品コードを確認してください。":"対応する商品マスタがありません。");
+    const inferredSupplier=match?.supplier_id ? supplierNames.get(match.supplier_id)??"" : inputSupplier;
+    const salesPrice=match?findPrice(match.id,"sale",customerIds.get(customer)??null,ownerId,item.occurred_on??""):null;
+    const purchasePrice=match?findPrice(match.id,"purchase",match.supplier_id??supplierId,ownerId,item.occurred_on??""):null;
+    if(salesPrice?.warning)warnings.push("売上："+salesPrice.warning);
+    if(purchasePrice?.warning)warnings.push("仕入："+purchasePrice.warning);
+    if(match&&match.unit!=="本")warnings.push("請求単位が本数以外です。換算数量を手動確認してください。");
+    const suggestion=match?{
+      productCode:match.product_code,productName:match.product_name,supplier:inferredSupplier,
+      unit:match.unit,saleUnitPrice:salesPrice?.price??null,purchaseUnitPrice:purchasePrice?.price??null,
+      source:"有効期間内の登録済み商品・単価マスタ",warnings
+    }:null;
+
     return {
       id: item.id, lineNumber: item.line_number, deliveredOn: item.occurred_on ?? "",
       referenceNumber: rawText(raw,"referenceNumber","伝票番号"), customer,
@@ -73,7 +127,7 @@ async function loadCandidates(importId: string) {
       saleUnitPrice: review ? Number(review.sale_unit_price) : null,
       purchaseUnitPrice: review ? Number(review.purchase_unit_price) : null,
       note: review?.note ?? "", confirmed: !!review,
-      confirmedAt: review?.confirmed_at ?? null
+      confirmedAt: review?.confirmed_at ?? null, suggestion
     };
   });
   return {
