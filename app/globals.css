@@ -126,3 +126,19 @@ input::placeholder{color:transparent}
 .reconciliationFooter{margin-top:20px;display:flex;align-items:center;flex-wrap:wrap;gap:12px}
 .reconciliationMessage{margin:12px 0;padding:10px 12px;background:#fff8e8;border-left:3px solid #d5a34a;color:#6d5017;font-size:13px}
 .reconciliationSuccess{margin:12px 0;padding:10px 12px;background:#f0f6fc;border:1px solid #c4d9ea;color:#2b516d;font-size:13px}
+
+/* Confirmed sales candidate review */
+.salesCandidatePanel{padding:18px 20px 24px}
+.salesBatchSelect{display:block;margin:18px 0;font-weight:700;font-size:13px;color:#34536b}
+.salesBatchSelect select{display:block;margin-top:7px;padding:10px 12px;max-width:900px;width:100%;border:1px solid #b0c3d2;border-radius:5px;background:#fff;color:#213b50;font:inherit}
+.salesCandidateTable{min-width:1140px}
+.salesCandidateTable td{vertical-align:top}
+.salesCandidateTable td small{display:block;margin-top:5px;color:#687b8c;font-size:12px}
+.salesCandidateTable td button{display:block;margin-top:8px}
+.salesEditPanel{margin:18px 0;padding:18px;border:1px solid #c8d9e7;border-radius:8px;background:#f8fbfe}
+.salesEditPanel h3,.salesGroupSection h3{margin:0 0 15px;font-size:16px;color:#234b67}
+.salesEditGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.salesEditGrid label{font-size:12px;font-weight:700;color:#38566f}
+.salesEditGrid input{display:block;margin-top:6px;width:100%;box-sizing:border-box;padding:10px;border-radius:5px;border:1px solid #b5cadb;background:#fff;color:#20394d;font:inherit}
+.salesGroupSection{margin:20px 0}
+@media(max-width:640px){.salesCandidatePanel{padding:14px}.salesEditPanel{padding:14px}}
