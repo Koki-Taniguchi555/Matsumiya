@@ -49,13 +49,10 @@ export async function POST(request: NextRequest) {
       const gas=await db.from("gas_types").select("id").eq("id",body.gasTypeId).maybeSingle();
       if(gas.error||!gas.data)throw new Error("指定されたガス種が存在しません。");
       const existing=await db.from("sales_product_mappings").select("id").eq("gas_type_id",body.gasTypeId)
-        .eq("product_code",code).is("supplier_id",body.supplierId??null).is("owner_id",body.ownerId??null).limit(1);
-      // null and non-null comparisons need explicit equality
+        .eq("product_code",code);
       if(existing.error)throw new Error(existing.error.message);
-      const dup=await db.from("sales_product_mappings").select("id").eq("gas_type_id",body.gasTypeId).eq("product_code",code);
-      if(dup.error)throw new Error(dup.error.message);
-      const duplicate=(dup.data??[]).some(x=>x.id===existing.data?.[0]?.id);
-      if(duplicate)throw new Error("同じ条件の商品コードは登録済みです。");
+      const duplicate=(existing.data??[]).length>0;
+      if(duplicate)throw new Error("同じガス種・商品コードは登録済みです。");
       const result=await db.from("sales_product_mappings").insert({
         gas_type_id:body.gasTypeId,supplier_id:body.supplierId||null,owner_id:body.ownerId||null,
         product_code:code,product_name:name,unit,created_by:auth.user.id
