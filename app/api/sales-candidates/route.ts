@@ -165,7 +165,7 @@ async function loadCandidates(importId: string) {
       note: review?.note ?? "", confirmed: !!review,
       confirmedAt: review?.confirmed_at ?? null, suggestion, quantitySuggestion, actualFillSuggestion, actualFillWarning,
       quantitySource: review?.quantity_source ?? (actualFillSuggestion?"actual_fill":quantitySuggestion?"rule":"manual"),
-      quantityReason: review?.quantity_reason ?? (actualFillSuggestion?"ハンディCSVの実充填量を採用（確認待ち）":""),
+      quantityReason: review?.quantity_reason ?? (actualFillSuggestion?"ハンディCSVの実充填量を採用（要確認）":""),
       quantityRuleId: review?.quantity_rule_id ?? (actualFillSuggestion?null:quantitySuggestion?.ruleId??null)
     };
   });
@@ -267,9 +267,10 @@ export async function POST(request: NextRequest) {
       quantityRuleId=expected.ruleId;
       quantityReason="";
     } else if (quantitySource==="actual_fill" && (
-      !row.actualFillSuggestion ||
-      Math.abs(row.actualFillSuggestion.quantity-quantity)>0.000001 ||
-      row.actualFillSuggestion.unit!==unit
+      row.actualFillSuggestion && (
+        Math.abs(row.actualFillSuggestion.quantity-quantity)>0.000001 ||
+        row.actualFillSuggestion.unit!==unit
+      )
     )) {
       throw new Error("ハンディ実充填量の候補と一致しません。実充填量を再適用するか、手動補正を選択してください。");
     } else if (quantityReason.length<3) {
