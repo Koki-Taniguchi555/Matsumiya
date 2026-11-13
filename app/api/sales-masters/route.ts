@@ -16,19 +16,20 @@ export async function GET() {
     const auth = await gate();
     if (auth.error) return auth.error;
     const db = adminClient();
-    const [gases, customers, suppliers, owners, products, prices] = await Promise.all([
+    const [gases, customers, suppliers, owners, products, prices, quantities] = await Promise.all([
       db.from("gas_types").select("id,code,name").order("name"),
       db.from("customers").select("id,name").order("name"),
       db.from("suppliers").select("id,code,name").order("name"),
       db.from("container_owners").select("id,code,name").order("name"),
       db.from("sales_product_mappings").select("id,gas_type_id,supplier_id,owner_id,product_code,product_name,unit").order("product_code"),
-      db.from("sales_price_rules").select("id,product_mapping_id,price_kind,customer_id,supplier_id,owner_id,unit_price,effective_from,effective_until").order("effective_from",{ascending:false})
+      db.from("sales_price_rules").select("id,product_mapping_id,price_kind,customer_id,supplier_id,owner_id,unit_price,effective_from,effective_until").order("effective_from",{ascending:false}),
+      db.from("sales_customer_quantity_rules").select("id,customer_id,product_mapping_id,billing_unit,quantity_per_container,effective_from,effective_until").order("effective_from",{ascending:false})
     ]);
-    const bad=[gases,customers,suppliers,owners,products,prices].find(v=>v.error);
+    const bad=[gases,customers,suppliers,owners,products,prices,quantities].find(v=>v.error);
     if(bad?.error)throw new Error(bad.error.message);
     return NextResponse.json({
       gases:gases.data??[],customers:customers.data??[],suppliers:suppliers.data??[],
-      owners:owners.data??[],products:products.data??[],prices:prices.data??[]
+      owners:owners.data??[],products:products.data??[],prices:prices.data??[],quantities:quantities.data??[]
     },{headers:{"cache-control":"no-store"}});
   } catch(error) {
     return NextResponse.json({error:error instanceof Error?error.message:"マスタ取得に失敗しました。"},{status:400});
@@ -82,6 +83,36 @@ export async function POST(request: NextRequest) {
       const result=await db.from("sales_price_rules").insert(rule).select("id").single();
       if(result.error)throw new Error(result.error.message);
       return NextResponse.json({ok:true,id:result.data.id},{status:201});
+    }
+    if(body.kind==="quantity"){
+      if(!uuid(body.customerId)||!uuid(body.productMappingId))throw new Error("得意先・商品を選択してください。");
+      const unit=trim(body.billingUnit);
+      if(!unit||unit.length>30)throw new Error("請求単位は30文字以内で入力してください。");
+      if(typeof body.quantityPerContainer!=="number"||!Number.isFinite(body.quantityPerContainer)||
+         body.quantityPerContainer<=0||body.quantityPerContainer>999999999||
+         Math.abs(Math.round(body.quantityPerContainer*1000)-body.quantityPerContainer*1000)>0.0001)throw new Error("1本あたり数量は0より大きい数値、小数3桁以内で指定してください。");
+      if(!date(body.effectiveFrom)||(body.effectiveUntil&&!date(body.effectiveUntil))||
+         (body.effectiveUntil&&String(body.effectiveUntil)<String(body.effectiveFrom)))throw new Error("適用開始日・終了日を確認してください。");
+      const [customer, product]=await Promise.all([
+        db.from("customers").select("id").eq("id",body.customerId).maybeSingle(),
+        db.from("sales_product_mappings").select("id,unit").eq("id",body.productMappingId).maybeSingle()
+      ]);
+      if(customer.error||product.error||!customer.data||!product.data)throw new Error("得意先または商品が存在しません。");
+      const existing=await db.from("sales_customer_quantity_rules").select("id,effective_from,effective_until")
+        .eq("customer_id",body.customerId).eq("product_mapping_id",body.productMappingId);
+      if(existing.error)throw new Error(existing.error.message);
+      const begin=String(body.effectiveFrom), end=String(body.effectiveUntil||"9999-12-31");
+      if((existing.data??[]).some(r=>r.effective_from<=end&&(r.effective_until??"9999-12-31")>=begin)){
+        throw new Error("同じ得意先・商品の換算ルールに適用期間の重複があります。既存ルールの期間を確認してください。");
+      }
+      const added=await db.from("sales_customer_quantity_rules").insert({
+        customer_id:body.customerId,product_mapping_id:body.productMappingId,
+        billing_unit:unit,quantity_per_container:body.quantityPerContainer,
+        effective_from:body.effectiveFrom,effective_until:body.effectiveUntil||null,
+        created_by:auth.user.id
+      }).select("id").single();
+      if(added.error)throw new Error(added.error.message);
+      return NextResponse.json({ok:true,id:added.data.id},{status:201});
     }
     throw new Error("登録区分が不正です。");
   }catch(error){
