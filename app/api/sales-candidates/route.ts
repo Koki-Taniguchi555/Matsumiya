@@ -182,11 +182,12 @@ export async function GET(request: NextRequest) {
     if (result.candidates.some(item => !item.customer || !item.productCode || !item.supplier || item.saleUnitPrice === null || item.purchaseUnitPrice === null)) {
       throw new Error("未設定項目があります。出力前に明細を確認してください。");
     }
-    const header = ["取込ID","行ID","出荷日","伝票番号","得意先","瓶号","ガス種","商品コード","商品名","仕入先","数量","単位","売上単価","仕入単価","売上金額","確認状態","連携状態"];
+    const header = ["取込ID","行ID","出荷日","伝票番号","得意先","瓶号","ガス種","商品コード","商品名","仕入先","数量","単位","売上単価","仕入単価","売上金額","数量決定方法","数量根拠・補正理由","確認状態","連携状態"];
     const lines: (string | number)[][] = [header,...result.candidates.map(item => [
       importId,item.id,item.deliveredOn,item.referenceNumber,item.customer,item.serialNumber,item.gasName,
       item.productCode,item.productName,item.supplier,item.quantity,item.unit,item.saleUnitPrice!,
       item.purchaseUnitPrice!,Math.round(item.quantity * item.saleUnitPrice! * 100) / 100,
+      item.quantitySource==="rule"?"換算マスタ":item.quantitySource==="actual_fill"?"実充填量":"手動補正",item.quantityReason,
       "確認済み","未連携・売上未計上"
     ])];
     const csv = "\uFEFF" + lines.map(row => row.map(csvSafe).join(",")).join("\r\n");
