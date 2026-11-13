@@ -593,7 +593,7 @@ export default function Home() {
 <div className="reconciliationFooter"><button type="button" className="actionButton" disabled={salesBusy||!salesResult.summary.total||!!salesResult.summary.pending} onClick={()=>void exportSalesCandidates()}>全明細確認済みの売上候補CSVを出力</button></div>
 <p className="instruction">CSV出力は販売管理への正式な送信ではありません。実際の販売管理システムへの取込形式・売上計上仕様は別途確認が必要です。エラー・回収・保留・未照合の明細は候補に含まれません。</p></>}</section>
 <section className="legacyPanel salesCandidatePanel"><div className="panelTitle"><h2>商品・単価マスタ登録</h2><button type="button" className="subtleButton" disabled={salesBusy} onClick={()=>void fetchSalesMasters().catch(error=>setSalesMasterMessage(error instanceof Error?error.message:"取得できませんでした。"))}>マスタ再読込</button></div>
-<p className="instruction">実際に確認した商品・単価だけを登録します。単価は適用開始日・終了日を管理し、出荷日時点で有効なルールを候補に表示します。ガスの本数から㎥・kgへの換算は自動確定しません。</p>
+<p className="instruction">商品・単価は適用期間を管理し、出荷日時点で有効なマスタを候補に表示します。得意先・商品別に登録された換算ルールに基づき、容器1本あたりの請求数量（㎥・kgなど）を自動算出し、候補として表示します。確定には担当者の確認・保存が必要です。実充填量が異なる場合は手動で補正できます。</p>
 <div className="monthlyTabs"><button className={salesMasterTab==="product"?"selected":""} type="button" onClick={()=>setSalesMasterTab("product")}>商品コード・商品マスタ</button><button className={salesMasterTab==="price"?"selected":""} type="button" onClick={()=>setSalesMasterTab("price")}>得意先別・仕入先別単価</button><button className={salesMasterTab==="quantity"?"selected":""} type="button" onClick={()=>setSalesMasterTab("quantity")}>得意先別の数量換算</button></div>
 {salesMasterMessage&&<p className="reconciliationMessage" role="status">{salesMasterMessage}</p>}
 {!salesMasters?<p className="instruction">「確定済み取込を読み込む」または「マスタ再読込」で登録画面を準備してください。</p>:
