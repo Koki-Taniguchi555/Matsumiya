@@ -1,6 +1,6 @@
 import type { LifecycleAction } from "@/lib/container-service";
 
-export type HandheldRow = { lineNumber: number; action: string; barcode: string; occurredOn: string; branchName: string; customerName: string; supplierName: string; referenceNumber: string; note: string; gasName: string; capacityValue: string; capacityUnit: string; raw: Record<string, string> };
+export type HandheldRow = { lineNumber: number; action: string; barcode: string; occurredOn: string; branchName: string; customerName: string; supplierName: string; referenceNumber: string; note: string; gasName: string; capacityValue: string; capacityUnit: string; actualFillValue: string; actualFillUnit: string; raw: Record<string, string> };
 export type RowIssue = { lineNumber: number; message: string };
 
 const headerAliases: Record<string, keyof Omit<HandheldRow, "lineNumber" | "raw">> = {
@@ -14,7 +14,9 @@ const headerAliases: Record<string, keyof Omit<HandheldRow, "lineNumber" | "raw"
   note: "note", "備考": "note",
   gas_name: "gasName", "ガス種": "gasName",
   capacity_value: "capacityValue", "容量": "capacityValue", "充填量": "capacityValue",
-  capacity_unit: "capacityUnit", "容量単位": "capacityUnit"
+  capacity_unit: "capacityUnit", "容量単位": "capacityUnit",
+  actual_fill_value: "actualFillValue", actual_fill: "actualFillValue", "実充填量": "actualFillValue",
+  actual_fill_unit: "actualFillUnit", "実充填量単位": "actualFillUnit"
 };
 
 function splitLine(line: string, delimiter: string) {
@@ -37,7 +39,7 @@ export function parseHandheldCsv(content: string): HandheldRow[] {
   const headers = splitLine(lines[0], delimiter).map((header) => headerAliases[header.trim().toLowerCase()] ?? header.trim());
   if (!headers.includes("action") || !headers.includes("barcode") || !headers.includes("occurredOn")) throw new Error("必須列「処理区分・バーコード・処理日」がありません。");
   return lines.slice(1).map((line, index) => {
-    const values = splitLine(line, delimiter); const raw: Record<string, string> = {}; const row = { lineNumber: index + 2, action: "", barcode: "", occurredOn: "", branchName: "", customerName: "", supplierName: "", referenceNumber: "", note: "", gasName: "", capacityValue: "", capacityUnit: "", raw };
+    const values = splitLine(line, delimiter); const raw: Record<string, string> = {}; const row = { lineNumber: index + 2, action: "", barcode: "", occurredOn: "", branchName: "", customerName: "", supplierName: "", referenceNumber: "", note: "", gasName: "", capacityValue: "", capacityUnit: "", actualFillValue: "", actualFillUnit: "", raw };
     headers.forEach((header, column) => { const value = values[column] ?? ""; raw[header] = value; if (header in row) (row as Record<string, unknown>)[header] = value; });
     return row;
   });
@@ -62,9 +64,15 @@ export function validateHandheldRows(rows: HandheldRow[]): RowIssue[] {
     if (action === "delivered" && !row.customerName.trim()) issues.push("納品には顧客名が必要です。");
     if (["received", "supplier_return"].includes(action ?? "") && !row.supplierName.trim()) issues.push("入荷・仕入れ返却には仕入れ先名が必要です。");
     if (action && !row.branchName.trim()) issues.push("すべての処理に営業所が必要です。");
+    if (row.actualFillValue.trim() || row.actualFillUnit.trim()) {
+      const v = Number(row.actualFillValue);
+      if (!row.actualFillValue.trim() || !Number.isFinite(v) || v <= 0 || v > 9999999 || !/^\\d+(?:\\.\\d{1,3})?$/.test(row.actualFillValue.trim()))
+        issues.push("実充填量は0より大きい数値（小数3桁まで）で入力してください。");
+      if (!["kg","m3","㎥","本"].includes(row.actualFillUnit.trim())) issues.push("実充填量単位はkg・m3（㎥）・本のいずれかにしてください。");
+    }
     if (row.capacityValue.trim() && (!Number.isFinite(Number(row.capacityValue)) || Number(row.capacityValue) <= 0)) issues.push("容量は0より大きい数値で入力してください。");
     return issues.map((message) => ({ lineNumber: row.lineNumber, message }));
   });
 }
 
-export const handheldCsvTemplate = "処理日,処理区分,バーコード,営業所,顧客,仕入先,伝票番号,備考,ガス種,容量,容量単位\n2026-10-17,入荷,DEMO-BC-0001,サンプル 本社営業所,,サンプル 仕入先001,IN-1001,,,,\n2026-10-17,出荷,DEMO-BC-0002,サンプル 東部営業所,サンプル 松宮商店,,DL-1002,,,,\n2026-10-17,回収,DEMO-BC-0003,サンプル 本社営業所,,,RC-1003,,,,";
+export const handheldCsvTemplate = "処理日,処理区分,バーコード,営業所,顧客,仕入先,伝票番号,備考,ガス種,容量,容量単位,実充填量,実充填量単位\n2026-10-17,入荷,DEMO-BC-0001,サンプル 本社営業所,,サンプル 仕入先001,IN-1001,,,,,,\n2026-10-17,出荷,DEMO-BC-0002,サンプル 東部営業所,サンプル 松宮商店,,DL-1002,,,,7.2,kg\n2026-10-17,回収,DEMO-BC-0003,サンプル 本社営業所,,,RC-1003,,,,,,";
