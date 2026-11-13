@@ -628,7 +628,7 @@ function NetworkActionFeedback() {
     let clickExpiry = 0;
     let inFlight = 0;
     let mounted = true;
-    const buttonCounts = new Map<HTMLButtonElement, { count: number; disabled: boolean; spinner: HTMLSpanElement }>();
+    const buttonCounts = new Map<HTMLButtonElement, { count: number; disabled: boolean }>();
     const captureClick = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -657,11 +657,7 @@ function NetworkActionFeedback() {
         const existing = buttonCounts.get(button);
         if (existing) existing.count++;
         else {
-          const spinner = document.createElement("span");
-          spinner.className = "networkButtonSpinner";
-          spinner.setAttribute("aria-hidden", "true");
-          button.appendChild(spinner);
-          buttonCounts.set(button, { count: 1, disabled: button.disabled, spinner });
+          buttonCounts.set(button, { count: 1, disabled: button.disabled });
           button.classList.add("networkButtonBusy");
           button.setAttribute("aria-busy", "true");
           button.disabled = true;
@@ -684,7 +680,6 @@ function NetworkActionFeedback() {
           button.disabled = state.disabled;
           button.classList.remove("networkButtonBusy");
           button.removeAttribute("aria-busy");
-          state.spinner.remove();
           buttonCounts.delete(button);
         }
       });
@@ -699,7 +694,6 @@ function NetworkActionFeedback() {
         button.disabled = state.disabled;
         button.classList.remove("networkButtonBusy");
         button.removeAttribute("aria-busy");
-        state.spinner.remove();
       }
     };
   }, []);
