@@ -221,3 +221,5 @@ input::placeholder{color:transparent}
 @media(max-width:600px){.legacySidebar{position:static}}
 
 .ledgerFilterGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 18px;margin:12px 0 16px}.ledgerFilterGrid label{display:flex;flex-direction:column;gap:5px;min-width:0;margin:0}.ledgerFilterGrid input{width:100%;min-width:0;max-width:100%}
+
+.ledgerInspectionAlert{border-color:#d9ad63;border-left:4px solid #c88a28}.ledgerInspectionAlert .panelTitle{background:#fff3d9;color:#805417}.ledgerInspectionAlert .instruction{color:#805417;font-weight:600}.ledgerInspectionAlert .instruction small{font-weight:400}.inspectionOverdue{color:#b42318}
