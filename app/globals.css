@@ -196,3 +196,20 @@ input::placeholder{color:transparent}
 
 /* Sales candidate values derived from masters are suggestions, never confirmed values */
 .salesCandidateSuggestionLabel{color:#326f96!important;font-size:11px!important;font-weight:650}
+
+/* Branch stocktake CSV: match legacy form gutters and keep controls inside panel. */
+.inventoryCsvSection{margin:0 22px 20px;padding:18px 0 4px;border-top:1px solid #d7e0e8;min-width:0}
+.inventoryCsvSection h3{margin:0 0 10px;font-size:15px;color:#234b67}
+.inventoryCsvSection .instruction{margin:0 0 16px;overflow-wrap:anywhere}
+.inventoryCsvSection label{display:block;font-size:13px;font-weight:600;color:#334a60}
+.inventoryCsvSection input[type=file]{display:block;width:100%;min-width:0;max-width:100%;margin:6px 0 0;padding:8px;border:1px solid #aebecd;border-radius:5px;background:#fff;font:inherit;font-weight:400;color:#334a60}
+.inventoryCsvSection input[type=file]::file-selector-button{font:inherit;padding:6px 10px;margin-right:8px;border:1px solid #aebecd;border-radius:4px;background:#edf3f8;color:#265f87;cursor:pointer}
+.inventoryCsvActions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0 18px}
+.inventoryCsvActions .subtleButton{margin:0}
+.inventoryCsvActions button:disabled{opacity:.5;cursor:not-allowed}
+.inventoryCsvSection .tableWrap{max-width:100%}
+.inventoryCsvSection .legacyTable{min-width:0;table-layout:fixed;overflow-wrap:anywhere}
+.inventoryCsvSection .legacyTable th{white-space:normal}
+.inventoryCsvSection .legacyTable th:first-child{width:15%}
+.inventoryCsvSection .legacyTable th:nth-child(3){width:20%}
+@media(max-width:600px){.inventoryCsvSection{margin-left:16px;margin-right:16px}.inventoryCsvActions button{flex:1 1 auto}}
