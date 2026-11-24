@@ -8,7 +8,7 @@ type ResolvedRow = { lineNumber: number; raw: Record<string, string>; action: Li
 
 export async function POST(request: NextRequest) {
   try {
-    const { filename, content, mode = "validate" } = await request.json() as { filename?: string; content?: string; mode?: "validate" | "apply" };
+    const { filename, content, mode = "validate", correction } = await request.json() as { filename?: string; content?: string; mode?: "validate" | "apply" | "correct"; correction?: {importId:string;lineNumber:number;reason:string} };
     const user = await requireAuthorizedUser();
     if (!user) return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
     if (!filename || !content) return NextResponse.json({ error: "CSVファイル名と内容が必要です。" }, { status: 400 });
@@ -55,6 +55,15 @@ export async function POST(request: NextRequest) {
       return { lineNumber: row.lineNumber, raw: row.raw, action, barcode: row.barcode, occurredOn: row.occurredOn, containerId: container?.id ?? null, customerId, supplierId, branchId, error: errors.join(" ") || null, warnings };
     });
     if (mode === "validate") return NextResponse.json({ valid: resolved.filter((row) => !row.error).length, errors: resolved.filter((row) => row.error), rows: resolved });
+    if (mode === "correct") {
+      if (!correction?.importId || !Number.isInteger(correction.lineNumber) || correction.reason?.trim().length < 3 || resolved.length !== 1) throw new Error("訂正対象と理由を指定してください。");
+      const row=resolved[0];
+      if (row.error || !row.action || !row.containerId) throw new Error(row.error ?? "訂正内容が不正です。");
+      if (!canRecordLifecycle(user,row.branchId)) return NextResponse.json({error:"営業所の処理権限がありません。"},{status:403});
+      const saved=await db.rpc("correct_handheld_row",{p_import_id:correction.importId,p_line:correction.lineNumber,p_raw:row.raw,p_action:row.action,p_container:row.containerId,p_barcode:row.barcode,p_date:row.occurredOn,p_customer:row.customerId,p_branch:row.branchId,p_supplier:row.supplierId,p_actor:user.id,p_reason:correction.reason.trim()});
+      if(saved.error) throw new Error(saved.error.message);
+      return NextResponse.json({row:{...row,lineNumber:correction.lineNumber,status:"applied",action:row.raw.action,error:null}});
+    }
     if (mode !== "apply") return NextResponse.json({ error: "実行内容が不正です。" }, { status: 400 });
     const outsideScope = resolved.find((row) => !row.error && !canRecordLifecycle(user, row.branchId));
     if (outsideScope) return NextResponse.json({ error: `${outsideScope.lineNumber}行目の営業所を処理する権限がありません。` }, { status: 403 });
@@ -64,7 +73,7 @@ export async function POST(request: NextRequest) {
     const rowInsert = await db.from("handheld_import_rows").insert(resolved.map((row) => ({ import_id: importId, line_number: row.lineNumber, raw_row: row.raw, action: row.action, barcode: row.barcode || null, container_id: row.containerId, occurred_on: /^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn) ? row.occurredOn : null, status: row.error ? "error" : "validated", error_message: row.error })));
     if (rowInsert.error) throw new Error(rowInsert.error.message);
     let applied = 0;
-    const rowOutcomes = resolved.map((row) => ({ lineNumber: row.lineNumber, barcode: row.barcode, occurredOn: row.occurredOn, action: row.raw.action ?? row.raw["処理区分"] ?? row.action ?? "", status: row.error ? "error" : "pending", error: row.error, warnings: row.warnings }));
+    const rowOutcomes = resolved.map((row) => ({ lineNumber: row.lineNumber, barcode: row.barcode, occurredOn: row.occurredOn, action: row.raw.action ?? row.raw["処理区分"] ?? row.action ?? "", status: row.error ? "error" : "pending", error: row.error, warnings: row.warnings, raw: row.raw }));
     for (const row of resolved.filter((item) => !item.error && item.action && item.containerId)) {
       try {
         await recordLifecycleAction({ containerId: row.containerId!, action: row.action!, occurredOn: row.occurredOn, customerId: row.customerId ?? undefined, supplierId: row.supplierId ?? undefined, branchId: row.branchId ?? undefined, actorId: user.id });
