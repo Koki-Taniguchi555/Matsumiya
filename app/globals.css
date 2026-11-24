@@ -213,3 +213,9 @@ input::placeholder{color:transparent}
 .inventoryCsvSection .legacyTable th:first-child{width:15%}
 .inventoryCsvSection .legacyTable th:nth-child(3){width:20%}
 @media(max-width:600px){.inventoryCsvSection{margin-left:16px;margin-right:16px}.inventoryCsvActions button{flex:1 1 auto}}
+
+/* Keep navigation visible while the document content scrolls. */
+.legacyHeader{position:sticky;top:0;z-index:100}
+@media(min-width:901px){.legacySidebar{position:sticky;top:58px;align-self:start;height:calc(100vh - 58px);height:calc(100dvh - 58px);min-height:0;overflow-y:auto;overscroll-behavior-y:contain;z-index:20}}
+@media(max-width:900px){.legacySidebar{position:sticky;top:58px;z-index:20}}
+@media(max-width:600px){.legacySidebar{position:static}}
