@@ -18,7 +18,7 @@ export async function recordLifecycleAction(input: {
 /** Locks a monthly calculation. Calling it for the same loan/month is rejected by the database. */
 export async function createMonthlyUsageCharge(loanId: string, billingMonth: string) {
   const db = adminClient();
-  const { data, error } = await db.rpc("calculate_monthly_usage_charge", { p_loan_id: loanId, p_billing_month: billingMonth });
+  const { data, error } = await db.rpc("calculate_monthly_usage_charge", { p_loan_id: loanId, p_billing_month: billingMonthRange(billingMonth).billingMonth });
   if (error) throw new Error(error.message);
   return data;
 }
@@ -40,13 +40,15 @@ export async function listMonthlyUsageCharges(billingMonth: string) {
   if (loans.error) throw new Error(loans.error.message);
   if (charges.error) throw new Error(charges.error.message);
   const rows = loans.data ?? [];
-  const [containers, customers] = await Promise.all([
-    rows.length ? db.from("containers").select("id, serial_number, management_number").in("id", [...new Set(rows.map((row) => row.container_id))]) : Promise.resolve({ data: [], error: null }),
-    rows.length ? db.from("customers").select("id, name").in("id", [...new Set(rows.map((row) => row.customer_id))]) : Promise.resolve({ data: [], error: null })
+  const chunks = (ids: string[]) => Array.from({ length: Math.ceil(ids.length / 50) }, (_, i) => ids.slice(i * 50, (i + 1) * 50));
+  const [containerPages, customerPages] = await Promise.all([
+    Promise.all(chunks([...new Set(rows.map((row) => row.container_id))]).map(ids => db.from("containers").select("id, serial_number, management_number").in("id", ids))),
+    Promise.all(chunks([...new Set(rows.map((row) => row.customer_id))]).map(ids => db.from("customers").select("id, name").in("id", ids)))
   ]);
-  if (containers.error || customers.error) throw new Error(containers.error?.message ?? customers.error?.message);
-  const containerById = new Map((containers.data ?? []).map((item) => [item.id, item]));
-  const customerById = new Map((customers.data ?? []).map((item) => [item.id, item]));
+  const failed = [...containerPages, ...customerPages].find(page => page.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  const containerById = new Map(containerPages.flatMap(page => page.data ?? []).map((item) => [item.id, item]));
+  const customerById = new Map(customerPages.flatMap(page => page.data ?? []).map((item) => [item.id, item]));
   const chargeByLoan = new Map((charges.data ?? []).map((item) => [item.loan_id, item]));
   const items: MonthlyBillingItem[] = rows.map((row) => {
     const loan: BillingLoan = { id: row.id, containerId: row.container_id, customerId: row.customer_id, deliveredOn: row.delivered_on, recoveredOn: row.recovered_on };
@@ -73,9 +75,11 @@ export async function confirmMonthlyUsageCharges(loanIds: string[], billingMonth
   if (invalid.length) throw new Error("対象月に確定できない貸出が含まれています。画面を再読み込みしてください。");
   const settled: string[] = [];
   const errors: { loanId: string; error: string }[] = [];
-  for (const loanId of requested) {
-    try { await createMonthlyUsageCharge(loanId, billingMonth); settled.push(loanId); }
-    catch (error) { errors.push({ loanId, error: error instanceof Error ? error.message : "確定に失敗しました。" }); }
+  for (let i = 0; i < requested.length; i += 10) {
+    await Promise.all(requested.slice(i, i + 10).map(async loanId => {
+      try { await createMonthlyUsageCharge(loanId, billingMonth); settled.push(loanId); }
+      catch (error) { errors.push({ loanId, error: error instanceof Error ? error.message : "確定に失敗しました。" }); }
+    }));
   }
   return { settled, errors };
 }
