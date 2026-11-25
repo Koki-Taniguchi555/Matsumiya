@@ -848,7 +848,7 @@ function NetworkActionFeedback() {
   </div>;
 }
 
-function Breadcrumb({ items }: { items: string[] }) { return <div className="crumb">業務メニュー　&gt;　{items.join("　&gt;　")}</div>; }
+function Breadcrumb({ items }: { items: string[] }) { return <div className="crumb">{["業務メニュー", ...items].join("　>　")}</div>; }
 function Summary({ label, value, detail }: { label: string; value: string; detail: string }) { return <article className="summaryCard"><span>{label}</span><b>{value}</b>{detail && <small>{detail}</small>}</article>; }
 function MenuButton({ title, detail }: { title: string; detail: string }) { return <article><b>{title}</b><span>{detail}</span></article>; }
 function WorkItem({ title, detail, count }: { title: string; detail: string; count: string }) { return <article><div><b>{title}</b><span>{detail}</span></div><em>{count}</em></article>; }
