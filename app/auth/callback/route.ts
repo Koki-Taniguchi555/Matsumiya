@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminClient } from "@/lib/supabase";
 import { createAuthServerClient, provisionInitialAdmin, writeAccessAudit } from "@/lib/auth";
 
 function redirect(request: NextRequest, path: string) { return NextResponse.redirect(new URL(path, request.url)); }
@@ -12,7 +13,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user?.email) throw userError ?? new Error("ログイン情報を確認できませんでした。");
-    const allowed = await provisionInitialAdmin(user.id, user.email);
+    const { data: profile, error: profileError } = await adminClient().from("app_user_profiles").select("user_id").eq("user_id", user.id).maybeSingle();
+    if (profileError) throw profileError;
+    const allowed = !!profile || await provisionInitialAdmin(user.id, user.email);
     if (!allowed) {
       await writeAccessAudit(user.id, "login_rejected", { email: user.email.toLowerCase() });
       await supabase.auth.signOut();
